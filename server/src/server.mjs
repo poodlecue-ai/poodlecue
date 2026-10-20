@@ -10,7 +10,7 @@ import {
 
 const port = Number(process.env.PORT || 3000);
 const model = process.env.OPENAI_MODEL || "gpt-6-luna";
-const realtimeModel = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1";
+const realtimeModel = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1-mini";
 const apiKey = process.env.OPENAI_API_KEY;
 const appToken = process.env.POODLECUE_APP_TOKEN;
 const safetyIdentifier = appToken

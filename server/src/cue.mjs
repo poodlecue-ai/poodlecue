@@ -99,6 +99,7 @@ export function buildRealtimeClientSecretRequest(model) {
       type: "realtime",
       model,
       output_modalities: ["text"],
+      max_output_tokens: 100,
       instructions: REALTIME_INSTRUCTIONS,
     },
   };

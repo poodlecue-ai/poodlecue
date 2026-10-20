@@ -50,6 +50,7 @@ test("builds a short-lived text-only realtime session", () => {
   assert.equal(body.session.type, "realtime");
   assert.equal(body.session.model, "gpt-realtime-2.1");
   assert.deepEqual(body.session.output_modalities, ["text"]);
+  assert.equal(body.session.max_output_tokens, 100);
   assert.equal(body.expires_after.seconds, 600);
   assert.equal(body.session.instructions.includes("Return only one compact JSON object"), true);
 });

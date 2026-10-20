@@ -8,7 +8,7 @@ Phase 8 compares the proven local cue policy with an AI candidate without allowi
 - After a complete **Them** turn, the app sends only the compact text turn, the previous **Me** turn, an optional user-reviewed memory, recent cue text, and the local candidate.
 - Raw audio and the full transcript are never sent.
 - The server uses the OpenAI Responses API with Structured Outputs and `store: false`.
-- The AI request is cancelled after roughly 2.2 seconds. A failure never changes the local cue.
+- The silent AI comparison is cancelled after roughly 8 seconds. A failure never changes the local cue.
 - The AI candidate is displayed silently for side-by-side evaluation.
 
 ## Privacy boundary

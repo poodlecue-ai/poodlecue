@@ -69,8 +69,8 @@ final class AIShadowClient {
         }
 
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 2.5
-        configuration.timeoutIntervalForResource = 3.0
+        configuration.timeoutIntervalForRequest = 8.5
+        configuration.timeoutIntervalForResource = 9.0
         configuration.waitsForConnectivity = false
         session = URLSession(configuration: configuration)
     }

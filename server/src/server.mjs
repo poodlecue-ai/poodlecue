@@ -49,7 +49,7 @@ const server = http.createServer(async (request, response) => {
         "content-type": "application/json",
       },
       body: JSON.stringify(buildOpenAIRequest(payload, model)),
-      signal: AbortSignal.timeout(2200),
+      signal: AbortSignal.timeout(8000),
     });
 
     if (!upstream.ok) {

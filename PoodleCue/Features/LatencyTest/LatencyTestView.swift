@@ -57,7 +57,7 @@ struct LatencyTestView: View {
             }
 
             HStack {
-                Text("Speak, pause briefly, then speak again to create another event.")
+                Text("Speak, pause briefly, then speak again. Timing includes the current input route and 10 ms analysis window.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -159,7 +159,7 @@ struct LatencyTestView: View {
     }
 
     private var measurementNote: some View {
-        Text("Microphone samples are analyzed live and discarded—this build does not save or transmit audio. Detection latency is estimated from the audio buffer timestamp. Cue timing still requires an external acoustic test for final validation.")
+        Text("Microphone samples are analyzed live and discarded—this build does not save or transmit audio. Detection timing uses the buffer clock when valid and the current route latency after a clock discontinuity. Final acoustic validation still requires an external test.")
             .font(.footnote)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)

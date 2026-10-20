@@ -9,6 +9,7 @@ Prove that PoodleCue can monitor a consented live microphone session, detect spe
 - Ten-millisecond live microphone buffers.
 - Local RMS level analysis and speech/quiet classification.
 - Speech-onset event count and timestamp-based latest, median, and p95 timing.
+- Restart-safe timing that rejects stale audio-clock epochs and falls back to the active route's modeled input latency.
 - Visible microphone level and listening state.
 - In-memory processing only; buffers are discarded after analysis.
 

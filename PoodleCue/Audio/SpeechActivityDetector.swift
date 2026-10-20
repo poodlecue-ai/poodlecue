@@ -12,6 +12,8 @@ final class SpeechActivityDetector {
 
     private var isSpeechActive = false
     private var quietDuration = 0.0
+    private var sessionStartedAtHostTime: UInt64 = 0
+    private var modeledOnsetLatencyMilliseconds = 0.0
 
     init(
         speechThresholdDBFS: Double = -38,
@@ -19,6 +21,12 @@ final class SpeechActivityDetector {
     ) {
         self.speechThresholdDBFS = speechThresholdDBFS
         self.releaseDuration = releaseDuration
+    }
+
+    func beginSession(modeledOnsetLatencyMilliseconds: Double) {
+        reset()
+        sessionStartedAtHostTime = mach_absolute_time()
+        self.modeledOnsetLatencyMilliseconds = modeledOnsetLatencyMilliseconds
     }
 
     func process(
@@ -54,6 +62,8 @@ final class SpeechActivityDetector {
     func reset() {
         isSpeechActive = false
         quietDuration = 0
+        sessionStartedAtHostTime = 0
+        modeledOnsetLatencyMilliseconds = 0
     }
 
     private func calculateLevelDBFS(_ buffer: AVAudioPCMBuffer) -> Double {
@@ -82,10 +92,25 @@ final class SpeechActivityDetector {
     }
 
     private func bufferAgeMilliseconds(capturedAt time: AVAudioTime) -> Double? {
-        guard time.isHostTimeValid else { return nil }
+        guard
+            time.isHostTimeValid,
+            sessionStartedAtHostTime > 0,
+            time.hostTime >= sessionStartedAtHostTime
+        else {
+            return modeledOnsetLatencyMilliseconds
+        }
 
         let now = AVAudioTime.seconds(forHostTime: mach_absolute_time())
         let captured = AVAudioTime.seconds(forHostTime: time.hostTime)
-        return max(0, (now - captured) * 1_000)
+        let timestampAge = (now - captured) * 1_000
+
+        // Voice-processing I/O can briefly preserve an earlier timestamp epoch
+        // after an engine restart. Treat multi-second or future timestamps as a
+        // discontinuity and use the current route's modeled input latency.
+        guard timestampAge >= 0, timestampAge <= 250 else {
+            return modeledOnsetLatencyMilliseconds
+        }
+
+        return max(timestampAge, modeledOnsetLatencyMilliseconds)
     }
 }

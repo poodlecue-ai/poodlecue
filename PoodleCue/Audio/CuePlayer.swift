@@ -106,6 +106,17 @@ final class CuePlayer {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         let bufferSize = AVAudioFrameCount(max(1, format.sampleRate * 0.01))
+        let bufferDuration = Double(bufferSize) / max(format.sampleRate, 1)
+        let session = AVAudioSession.sharedInstance()
+        let routeLatency = session.inputLatency + session.ioBufferDuration
+        let modeledOnsetLatency = (
+            max(input.presentationLatency, routeLatency) + bufferDuration
+        ) * 1_000
+
+        speechDetector.beginSession(
+            modeledOnsetLatencyMilliseconds: modeledOnsetLatency
+        )
+        lastLevelUpdateHostTime = 0
 
         input.installTap(
             onBus: 0,

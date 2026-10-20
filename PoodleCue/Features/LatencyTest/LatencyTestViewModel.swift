@@ -203,7 +203,17 @@ final class LatencyTestViewModel: ObservableObject {
     }
 
     func recordAIComparison(_ choice: String) {
-        guard case .ready = aiShadowState else { return }
+        let validChoices = ["Local", "AI", "Neither"]
+        guard case .ready = aiShadowState,
+              validChoices.contains(choice),
+              aiComparisonChoice != choice else { return }
+
+        if let previousChoice = aiComparisonChoice {
+            let previousKey = "aiComparison.\(previousChoice)"
+            let previousTotal = UserDefaults.standard.integer(forKey: previousKey)
+            UserDefaults.standard.set(max(0, previousTotal - 1), forKey: previousKey)
+        }
+
         aiComparisonChoice = choice
         let key = "aiComparison.\(choice)"
         UserDefaults.standard.set(UserDefaults.standard.integer(forKey: key) + 1, forKey: key)

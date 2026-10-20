@@ -295,21 +295,45 @@ struct ConversationView: View {
                 }
 
                 Divider()
-                HStack {
-                    Text(model.aiComparisonChoice.map { "Recorded: \($0)" } ?? "Which was better?")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Menu("Choose") {
-                        Button("Local cue") { model.recordAIComparison("Local") }
-                        Button("AI cue") { model.recordAIComparison("AI") }
-                        Button("Neither") { model.recordAIComparison("Neither") }
-                    }
-                    .buttonStyle(.bordered)
+                Text("Which was better?")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 8) {
+                    aiComparisonButton("Local")
+                    aiComparisonButton("AI")
+                    aiComparisonButton("Neither")
+                }
+
+                if let choice = model.aiComparisonChoice {
+                    Label("Recorded: \(choice)", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.green)
                 }
             }
         }
         .cardStyle(color: .purple)
+    }
+
+    private func aiComparisonButton(_ choice: String) -> some View {
+        let isSelected = model.aiComparisonChoice == choice
+
+        return Button {
+            model.recordAIComparison(choice)
+        } label: {
+            HStack(spacing: 4) {
+                if isSelected {
+                    Image(systemName: "checkmark")
+                }
+                Text(choice)
+            }
+            .font(.caption.weight(.semibold))
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .tint(isSelected ? .purple : .secondary)
+        .accessibilityLabel("Choose \(choice) cue")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 
     private var memoryCard: some View {

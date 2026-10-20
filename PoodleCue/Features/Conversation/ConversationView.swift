@@ -16,6 +16,10 @@ struct ConversationView: View {
 
                     cueCard
 
+                    if model.isAIShadowConfigured {
+                        aiShadowCard
+                    }
+
                     if model.isSessionActive || !model.transcript.isEmpty {
                         transcriptCard
                     }
@@ -246,6 +250,68 @@ struct ConversationView: View {
         .cardStyle()
     }
 
+    private var aiShadowCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("AI shadow", systemImage: "eye.slash")
+                    .font(.headline)
+                Spacer()
+                Text("Never spoken")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            switch model.aiShadowState {
+            case .unavailable, .idle:
+                Text("The silent comparison appears after their next complete thought.")
+                    .foregroundStyle(.secondary)
+            case .comparing:
+                HStack {
+                    ProgressView()
+                    Text("Comparing with the local cue…")
+                        .foregroundStyle(.secondary)
+                }
+            case let .failed(message):
+                Text(message)
+                    .foregroundStyle(.secondary)
+            case let .ready(result):
+                if let baseline = model.localShadowBaseline {
+                    Text("Local: \(baseline)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                if result.shouldSpeak {
+                    Text("AI: \(result.cue)")
+                        .font(.title3.weight(.semibold))
+                    Text("\(result.intent.capitalized.replacingOccurrences(of: "_", with: "-")) · \(Int(result.latencyMilliseconds)) ms · \(result.reason)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("AI: Stay silent")
+                        .font(.title3.weight(.semibold))
+                    Text("The AI judged that another cue would not add value · \(Int(result.latencyMilliseconds)) ms")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Divider()
+                HStack {
+                    Text(model.aiComparisonChoice.map { "Recorded: \($0)" } ?? "Which was better?")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Menu("Choose") {
+                        Button("Local cue") { model.recordAIComparison("Local") }
+                        Button("AI cue") { model.recordAIComparison("AI") }
+                        Button("Neither") { model.recordAIComparison("Neither") }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .cardStyle(color: .purple)
+    }
+
     private var memoryCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Remember for next time", systemImage: "lock.shield")
@@ -287,7 +353,9 @@ struct ConversationView: View {
 
     private var privacyNote: some View {
         Label(
-            "Audio and full transcripts are discarded. Only a note you review and save remains on this iPhone.",
+            model.isAIShadowConfigured
+                ? "Audio and full transcripts are discarded. AI shadow mode sends only the latest text turn and optional reviewed memory for a silent comparison."
+                : "Audio and full transcripts are discarded. Only a note you review and save remains on this iPhone.",
             systemImage: "hand.raised.fill"
         )
         .font(.footnote)

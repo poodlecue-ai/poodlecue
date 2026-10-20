@@ -38,6 +38,9 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var cueSpeechStartMilliseconds: Double?
     @Published private(set) var conversationTurns: [ConversationTurn] = []
     @Published private(set) var latestCueFeedback: CueFeedback?
+    @Published private(set) var aiShadowState: AIShadowState = .unavailable
+    @Published private(set) var aiComparisonChoice: String?
+    @Published private(set) var localShadowBaseline: String?
     @Published var speaksCues = true
     @Published var inputPreference: AudioInputPreference = .iPhone
     @Published var listeningToOtherPerson = true {
@@ -57,14 +60,17 @@ final class LatencyTestViewModel: ObservableObject {
     private let transcriber = SpeechTranscriber()
     private let cueEngine = LocalCueEngine()
     private let cueSpeaker = CueSpeaker()
+    private let aiShadowClient = AIShadowClient()
     let memoryStore = ConversationMemoryStore()
     private var pendingSpeechOnsetNanoseconds: UInt64?
     private var needsCueForCurrentUtterance = false
     private var roleStartTranscript = ""
     private var previousUserTurn: String?
     private var recentCueTexts: [String] = []
+    private var aiShadowTask: Task<Void, Never>?
 
     init() {
+        aiShadowState = aiShadowClient.isConfigured ? .idle : .unavailable
         cuePlayer.onMeasurement = { [weak self] measurement in
             self?.measurements.append(measurement)
         }
@@ -110,6 +116,10 @@ final class LatencyTestViewModel: ObservableObject {
                 self?.cueSpeechStartMilliseconds = latency
             }
         }
+    }
+
+    var isAIShadowConfigured: Bool {
+        aiShadowClient.isConfigured
     }
 
     var latestLatency: Double? {
@@ -192,6 +202,13 @@ final class LatencyTestViewModel: ObservableObject {
         UserDefaults.standard.set(total, forKey: key)
     }
 
+    func recordAIComparison(_ choice: String) {
+        guard case .ready = aiShadowState else { return }
+        aiComparisonChoice = choice
+        let key = "aiComparison.\(choice)"
+        UserDefaults.standard.set(UserDefaults.standard.integer(forKey: key) + 1, forKey: key)
+    }
+
     func selectMemory(_ memory: ConversationMemory) {
         selectedMemory = memory
         conversationPartnerName = memory.personName
@@ -201,6 +218,10 @@ final class LatencyTestViewModel: ObservableObject {
             summary: memory.summary
         )
         latestCueFeedback = nil
+        aiShadowTask?.cancel()
+        aiShadowState = aiShadowClient.isConfigured ? .idle : .unavailable
+        aiComparisonChoice = nil
+        localShadowBaseline = nil
         memoryStatusMessage = "Ready with context from your last conversation."
     }
 
@@ -211,6 +232,10 @@ final class LatencyTestViewModel: ObservableObject {
         memoryDraft = ""
         latestCue = nil
         latestCueFeedback = nil
+        aiShadowTask?.cancel()
+        aiShadowState = aiShadowClient.isConfigured ? .idle : .unavailable
+        aiComparisonChoice = nil
+        localShadowBaseline = nil
         memoryStatusMessage = nil
     }
 
@@ -284,6 +309,10 @@ final class LatencyTestViewModel: ObservableObject {
         cueSpeechStartMilliseconds = nil
         conversationTurns = []
         latestCueFeedback = nil
+        aiShadowTask?.cancel()
+        aiShadowState = aiShadowClient.isConfigured ? .idle : .unavailable
+        aiComparisonChoice = nil
+        localShadowBaseline = nil
         roleStartTranscript = ""
         previousUserTurn = nil
         recentCueTexts = []
@@ -333,6 +362,7 @@ final class LatencyTestViewModel: ObservableObject {
     }
 
     private func stopSession() {
+        aiShadowTask?.cancel()
         cueSpeaker.stop()
         transcriber.stop()
         cuePlayer.stop()
@@ -362,33 +392,64 @@ final class LatencyTestViewModel: ObservableObject {
     }
 
     private func createCueIfReady() {
-        guard
-            listeningToOtherPerson,
-            needsCueForCurrentUtterance,
-            let cue = cueEngine.suggest(
+        guard listeningToOtherPerson, needsCueForCurrentUtterance else { return }
+
+        let themText = transcriptDelta(since: roleStartTranscript)
+        guard !themText.isEmpty else { return }
+
+        let cue = cueEngine.suggest(
                 from: transcript,
                 memorySummary: selectedMemory?.summary,
                 previousUserTurn: previousUserTurn,
                 recentCueTexts: recentCueTexts
             )
-        else { return }
-
+        needsCueForCurrentUtterance = false
         latestCue = cue
         latestCueFeedback = nil
-        cueCount += 1
-        cueSpeechStartMilliseconds = nil
-        needsCueForCurrentUtterance = false
-        recentCueTexts.append(cue.text)
-        recentCueTexts = Array(recentCueTexts.suffix(5))
+        localShadowBaseline = cue?.text ?? "Stay silent"
 
-        let themText = transcriptDelta(since: roleStartTranscript)
-        if !themText.isEmpty {
-            appendTurn(speaker: .them, text: themText)
-            roleStartTranscript = transcript
+        appendTurn(speaker: .them, text: themText)
+        roleStartTranscript = transcript
+
+        if let cue {
+            cueCount += 1
+            cueSpeechStartMilliseconds = nil
+            recentCueTexts.append(cue.text)
+            recentCueTexts = Array(recentCueTexts.suffix(5))
+
+            if speaksCues {
+                cueSpeaker.speak(cue.text)
+            }
         }
 
-        if speaksCues {
-            cueSpeaker.speak(cue.text)
+        requestAIShadowCue(themText: themText, localCue: cue?.text)
+    }
+
+    private func requestAIShadowCue(themText: String, localCue: String?) {
+        guard aiShadowClient.isConfigured else { return }
+        let payload = AIShadowRequest(
+            them: themText,
+            me: previousUserTurn,
+            memory: selectedMemory?.summary,
+            recentCues: recentCueTexts,
+            localCue: localCue
+        )
+
+        aiShadowTask?.cancel()
+        aiShadowState = .comparing
+        aiComparisonChoice = nil
+        aiShadowTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await aiShadowClient.compare(payload)
+                guard !Task.isCancelled else { return }
+                aiShadowState = .ready(result)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                aiShadowState = .failed("AI comparison unavailable; your local cue was unaffected.")
+            }
         }
     }
 

@@ -1,0 +1,106 @@
+const MAX_FIELD_LENGTH = 1200;
+
+export function sanitizePayload(body) {
+  const clean = (value) =>
+    typeof value === "string" ? value.trim().slice(0, MAX_FIELD_LENGTH) : "";
+
+  const them = clean(body?.them);
+  if (!them) throw new Error("them is required");
+
+  return {
+    them,
+    me: clean(body?.me),
+    memory: clean(body?.memory),
+    localCue: clean(body?.local_cue),
+    recentCues: Array.isArray(body?.recent_cues)
+      ? body.recent_cues.slice(-5).map(clean).filter(Boolean)
+      : [],
+  };
+}
+
+export function buildOpenAIRequest(payload, model) {
+  return {
+    model,
+    store: false,
+    reasoning: { effort: "low" },
+    max_output_tokens: 180,
+    input: [
+      {
+        role: "developer",
+        content: [
+          {
+            type: "input_text",
+            text: [
+              "You are the silent comparison policy for PoodleCue, an in-ear social coach.",
+              "Decide whether a cue would add real value after the other person finishes a thought.",
+              "Prefer silence for acknowledgements, low-signal remarks, repetition, or when the user already asked the obvious question.",
+              "When speaking, write one natural cue the user could act on immediately: 3-12 words, warm, specific, and never robotic.",
+              "Do not mention being an AI. Do not provide therapy, diagnosis, manipulation, or covert persuasion.",
+            ].join(" "),
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify({
+              other_person: payload.them,
+              users_previous_turn: payload.me || null,
+              reviewed_memory: payload.memory || null,
+              recent_cues: payload.recentCues,
+              local_candidate: payload.localCue || null,
+            }),
+          },
+        ],
+      },
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "poodlecue_shadow_cue",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            should_speak: { type: "boolean" },
+            cue: { type: "string" },
+            intent: {
+              type: "string",
+              enum: ["empathy", "answer", "follow_up", "recall", "celebrate", "silence"],
+            },
+            reason: { type: "string" },
+            confidence: { type: "number", minimum: 0, maximum: 1 },
+          },
+          required: ["should_speak", "cue", "intent", "reason", "confidence"],
+        },
+      },
+    },
+  };
+}
+
+export function extractOutputText(response) {
+  for (const item of response?.output ?? []) {
+    for (const content of item?.content ?? []) {
+      if (content?.type === "output_text" && typeof content.text === "string") {
+        return content.text;
+      }
+    }
+  }
+  throw new Error("OpenAI response did not contain output text");
+}
+
+export function normalizeCue(value, latencyMilliseconds) {
+  const shouldSpeak = Boolean(value?.should_speak);
+  const cue = shouldSpeak ? String(value?.cue ?? "").trim().slice(0, 160) : "";
+  return {
+    should_speak: shouldSpeak && cue.length > 0,
+    cue,
+    intent: String(value?.intent ?? "silence"),
+    reason: String(value?.reason ?? "").trim().slice(0, 240),
+    confidence: Math.max(0, Math.min(1, Number(value?.confidence) || 0)),
+    latency_ms: Math.round(latencyMilliseconds),
+  };
+}

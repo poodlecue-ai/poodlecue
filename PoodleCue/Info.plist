@@ -18,6 +18,10 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>AIShadowEndpoint</key>
+	<string>$(AI_SHADOW_ENDPOINT)</string>
+	<key>AIShadowAppToken</key>
+	<string>$(AI_SHADOW_APP_TOKEN)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>

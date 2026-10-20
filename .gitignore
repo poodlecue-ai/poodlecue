@@ -6,4 +6,7 @@ xcuserdata/
 *.moved-aside
 *.xccheckout
 *.xcscmblueprint
+.env
+server/.env
+node_modules/
 

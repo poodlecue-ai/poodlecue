@@ -281,10 +281,22 @@ struct ConversationView: View {
                 if result.shouldSpeak {
                     Text(result.cue)
                         .font(.title3.weight(.semibold))
+                    Text(result.reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     HStack {
-                        Text("\(result.intent.capitalized.replacingOccurrences(of: "_", with: "-")) · \(Int(result.latencyMilliseconds)) ms · \(result.reason)")
+                        Text("AI \(Int(result.latencyMilliseconds)) ms")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if let endToEar = model.latestEndToEarMilliseconds {
+                            Text("End-to-ear \(Int(endToEar)) ms")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.orange)
+                        } else if model.speaksCues {
+                            Text("Measuring end-to-ear…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Spacer()
                         Button("Hear AI") {
                             model.replayLatestAICue()
@@ -316,20 +328,20 @@ struct ConversationView: View {
 
             HStack(spacing: 8) {
                 evaluationMetric(
-                    label: "Median",
+                    label: "AI median",
                     value: formattedEvaluationLatency(model.aiRealtimeMedianLatency)
                 )
                 evaluationMetric(
-                    label: "p95",
-                    value: formattedEvaluationLatency(model.aiRealtimeP95Latency)
+                    label: "Ear median",
+                    value: formattedEvaluationLatency(model.endToEarMedianLatency)
                 )
                 evaluationMetric(
-                    label: "Fallback / failed",
-                    value: "\(model.aiRealtimeFallbackCount) / \(model.aiRealtimeFailureCount)"
+                    label: "Ear p95",
+                    value: formattedEvaluationLatency(model.endToEarP95Latency)
                 )
             }
 
-            Text("AI-only mode: a validated AI cue is spoken when ready. Silence or failure never falls back to a local cue.")
+            Text("End-to-ear measures from the estimated end of their speech until the cue actually begins. Fallback / failed: \(model.aiRealtimeFallbackCount) / \(model.aiRealtimeFailureCount).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

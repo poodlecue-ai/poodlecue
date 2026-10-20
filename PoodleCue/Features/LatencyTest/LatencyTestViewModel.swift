@@ -38,6 +38,8 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var latestCue: LocalConversationCue?
     @Published private(set) var cueCount = 0
     @Published private(set) var cueSpeechStartMilliseconds: Double?
+    @Published private(set) var latestEndToEarMilliseconds: Double?
+    @Published private(set) var endToEarLatencies: [Double] = []
     @Published private(set) var conversationTurns: [ConversationTurn] = []
     @Published private(set) var latestCueFeedback: CueFeedback?
     @Published private(set) var aiShadowState: AIShadowState = .unavailable
@@ -73,6 +75,11 @@ final class LatencyTestViewModel: ObservableObject {
     private var recentCueTexts: [String] = []
     private var aiShadowTask: Task<Void, Never>?
     private var transcriptPauseTask: Task<Void, Never>?
+    private var currentTurnEndedAtNanoseconds: UInt64?
+    private var pendingCueSpeechFromNanoseconds: UInt64?
+
+    private static let speechReleaseEstimateNanoseconds: UInt64 = 350_000_000
+    private static let transcriptStabilityDelay = Duration.milliseconds(450)
 
     init() {
         aiShadowState = aiShadowClient.isConfigured ? .idle : .unavailable
@@ -92,8 +99,13 @@ final class LatencyTestViewModel: ObservableObject {
             }
 
             if wasSpeechActive && !snapshot.isSpeechActive {
-                // Give on-device recognition time to deliver the final words.
-                // Any later transcript update restarts this short countdown.
+                let detectedAt = DispatchTime.now().uptimeNanoseconds
+                currentTurnEndedAtNanoseconds = detectedAt > Self.speechReleaseEstimateNanoseconds
+                    ? detectedAt - Self.speechReleaseEstimateNanoseconds
+                    : detectedAt
+
+                // Give on-device recognition a short window for the final words.
+                // A later transcript update restarts this countdown.
                 scheduleTranscriptPauseFallback(for: transcript)
             }
         }
@@ -116,7 +128,17 @@ final class LatencyTestViewModel: ObservableObject {
         }
         cueSpeaker.onSpeechStarted = { [weak self] latency in
             DispatchQueue.main.async {
-                self?.cueSpeechStartMilliseconds = latency
+                guard let self else { return }
+                self.cueSpeechStartMilliseconds = latency
+                if let startedAt = self.pendingCueSpeechFromNanoseconds {
+                    let now = DispatchTime.now().uptimeNanoseconds
+                    let elapsed = now > startedAt ? now - startedAt : 0
+                    let milliseconds = Double(elapsed) / 1_000_000
+                    self.latestEndToEarMilliseconds = milliseconds
+                    self.endToEarLatencies.append(milliseconds)
+                    self.endToEarLatencies = Array(self.endToEarLatencies.suffix(200))
+                    self.pendingCueSpeechFromNanoseconds = nil
+                }
             }
         }
     }
@@ -179,6 +201,14 @@ final class LatencyTestViewModel: ObservableObject {
 
     var aiRealtimeP95Latency: Double? {
         percentile(0.95, values: savedAIRealtimeLatencies)
+    }
+
+    var endToEarMedianLatency: Double? {
+        percentile(0.50, values: endToEarLatencies)
+    }
+
+    var endToEarP95Latency: Double? {
+        percentile(0.95, values: endToEarLatencies)
     }
 
     var latestLatency: Double? {
@@ -347,6 +377,8 @@ final class LatencyTestViewModel: ObservableObject {
             captureUserTurn()
         }
         pendingSpeechOnsetNanoseconds = nil
+        currentTurnEndedAtNanoseconds = nil
+        pendingCueSpeechFromNanoseconds = nil
         needsCueForCurrentUtterance = false
         cueEngine.beginTurn(at: transcript)
         roleStartTranscript = transcript
@@ -376,10 +408,14 @@ final class LatencyTestViewModel: ObservableObject {
         transcriptionLocale = ""
         isTranscriptFinal = false
         pendingSpeechOnsetNanoseconds = nil
+        currentTurnEndedAtNanoseconds = nil
+        pendingCueSpeechFromNanoseconds = nil
         needsCueForCurrentUtterance = false
         latestCue = nil
         cueCount = 0
         cueSpeechStartMilliseconds = nil
+        latestEndToEarMilliseconds = nil
+        endToEarLatencies.removeAll()
         conversationTurns = []
         latestCueFeedback = nil
         aiShadowTask?.cancel()
@@ -437,6 +473,8 @@ final class LatencyTestViewModel: ObservableObject {
         microphoneLevelDBFS = -80
         isSpeechActive = false
         pendingSpeechOnsetNanoseconds = nil
+        currentTurnEndedAtNanoseconds = nil
+        pendingCueSpeechFromNanoseconds = nil
         needsCueForCurrentUtterance = false
         isSessionActive = false
     }
@@ -454,6 +492,9 @@ final class LatencyTestViewModel: ObservableObject {
 
         let currentTurnText = transcriptDelta(since: roleStartTranscript)
         if !currentTurnText.isEmpty {
+            if !isSpeechActive, currentTurnEndedAtNanoseconds == nil {
+                currentTurnEndedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
+            }
             if listeningToOtherPerson {
                 // The speech recognizer can successfully hear a distant voice
                 // even when the fixed audio-level threshold misses its onset.
@@ -473,7 +514,7 @@ final class LatencyTestViewModel: ObservableObject {
     private func scheduleTranscriptPauseFallback(for transcriptSnapshot: String) {
         transcriptPauseTask?.cancel()
         transcriptPauseTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(900))
+            try? await Task.sleep(for: Self.transcriptStabilityDelay)
             guard !Task.isCancelled, let self else { return }
             guard transcript == transcriptSnapshot, !isSpeechActive else { return }
             finishCurrentTranscriptTurn()
@@ -500,15 +541,27 @@ final class LatencyTestViewModel: ObservableObject {
         latestCue = nil
         latestCueFeedback = nil
         localShadowBaseline = nil
+        latestEndToEarMilliseconds = nil
+        pendingCueSpeechFromNanoseconds = nil
 
         appendTurn(speaker: .them, text: themText)
         roleStartTranscript = transcript
         let priorCueTexts = recentCueTexts
+        let turnEndedAtNanoseconds = currentTurnEndedAtNanoseconds
+        currentTurnEndedAtNanoseconds = nil
 
-        requestAIShadowCue(themText: themText, recentCues: priorCueTexts)
+        requestAIShadowCue(
+            themText: themText,
+            recentCues: priorCueTexts,
+            turnEndedAtNanoseconds: turnEndedAtNanoseconds
+        )
     }
 
-    private func requestAIShadowCue(themText: String, recentCues: [String]) {
+    private func requestAIShadowCue(
+        themText: String,
+        recentCues: [String],
+        turnEndedAtNanoseconds: UInt64?
+    ) {
         guard aiShadowClient.isConfigured else { return }
         let payload = AIShadowRequest(
             them: themText,
@@ -550,6 +603,7 @@ final class LatencyTestViewModel: ObservableObject {
                     recentCueTexts = Array(recentCueTexts.suffix(5))
                 }
                 if speaksCues, result.shouldSpeak {
+                    pendingCueSpeechFromNanoseconds = turnEndedAtNanoseconds
                     cueSpeaker.speak(result.cue)
                 }
             } catch is CancellationError {

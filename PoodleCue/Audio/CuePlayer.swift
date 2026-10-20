@@ -14,20 +14,22 @@ final class CuePlayer {
     typealias MeasurementHandler = (CueLatencyMeasurement) -> Void
     typealias SpeechActivityHandler = (SpeechActivitySnapshot) -> Void
 
-    private let engine = AVAudioEngine()
-    private let player = AVAudioPlayerNode()
+    private var engine = AVAudioEngine()
+    private var player = AVAudioPlayerNode()
     private let speechDetector = SpeechActivityDetector()
     private var isGraphConfigured = false
     private var isInputTapInstalled = false
     private var cueBuffer: AVAudioPCMBuffer?
     private var cueDurationNanoseconds: UInt64 = 0
     private var lastLevelUpdateHostTime: UInt64 = 0
+    private var sessionGeneration: UInt64 = 0
 
     var onMeasurement: MeasurementHandler?
     var onSpeechActivity: SpeechActivityHandler?
 
     func prepare() throws {
         guard !engine.isRunning else { return }
+        sessionGeneration &+= 1
 
         let format = AVAudioFormat(
             standardFormatWithSampleRate: 48_000,
@@ -53,6 +55,8 @@ final class CuePlayer {
         guard let cueBuffer else { return }
 
         let requestedAt = DispatchTime.now().uptimeNanoseconds
+        let generation = sessionGeneration
+        let cueDurationNanoseconds = cueDurationNanoseconds
         let session = AVAudioSession.sharedInstance()
         let graphPresentationLatency = max(
             player.outputPresentationLatency,
@@ -68,11 +72,14 @@ final class CuePlayer {
             cueBuffer,
             completionCallbackType: .dataRendered
         ) { [weak self] _ in
-            guard let self else { return }
+            guard
+                let self,
+                self.sessionGeneration == generation
+            else { return }
 
             let renderedAt = DispatchTime.now().uptimeNanoseconds
-            let estimatedStart = renderedAt > self.cueDurationNanoseconds
-                ? renderedAt - self.cueDurationNanoseconds
+            let estimatedStart = renderedAt > cueDurationNanoseconds
+                ? renderedAt - cueDurationNanoseconds
                 : renderedAt
             let elapsed = estimatedStart > requestedAt
                 ? estimatedStart - requestedAt
@@ -89,15 +96,25 @@ final class CuePlayer {
     }
 
     func stop() {
+        sessionGeneration &+= 1
+
         if isInputTapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             isInputTapInstalled = false
         }
         player.stop()
         engine.stop()
-        engine.reset()
         speechDetector.reset()
         cueBuffer = nil
+        cueDurationNanoseconds = 0
+        lastLevelUpdateHostTime = 0
+
+        // Voice-processing I/O can retain stale render and capture state when
+        // the same engine graph is stopped and started again. Rebuild the graph
+        // so every user session receives fresh I/O nodes and timelines.
+        engine = AVAudioEngine()
+        player = AVAudioPlayerNode()
+        isGraphConfigured = false
     }
 
     private func installInputTap() {
@@ -117,13 +134,17 @@ final class CuePlayer {
             modeledOnsetLatencyMilliseconds: modeledOnsetLatency
         )
         lastLevelUpdateHostTime = 0
+        let generation = sessionGeneration
 
         input.installTap(
             onBus: 0,
             bufferSize: bufferSize,
             format: format
         ) { [weak self] buffer, time in
-            guard let self else { return }
+            guard
+                let self,
+                self.sessionGeneration == generation
+            else { return }
 
             let snapshot = self.speechDetector.process(
                 buffer: buffer,

@@ -4,6 +4,7 @@ import Foundation
 @MainActor
 final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var isSessionActive = false
+    @Published private(set) var isStartingSession = false
     @Published private(set) var route = AudioRouteDescription.unavailable
     @Published private(set) var measurements: [CueLatencyMeasurement] = []
     @Published private(set) var microphoneLevelDBFS = -80.0
@@ -67,6 +68,7 @@ final class LatencyTestViewModel: ObservableObject {
     }
 
     func toggleSession() {
+        guard !isStartingSession else { return }
         isSessionActive ? stopSession() : startSession()
     }
 
@@ -85,8 +87,14 @@ final class LatencyTestViewModel: ObservableObject {
 
     private func startSession() {
         errorMessage = nil
+        isStartingSession = true
+        measurements.removeAll()
+        speechDetectionLatencies.removeAll()
+        microphoneLevelDBFS = -80
+        isSpeechActive = false
 
         Task {
+            defer { isStartingSession = false }
             let permission = await AVAudioApplication.requestRecordPermission()
             guard permission else {
                 errorMessage = "Microphone permission is required to activate the duplex audio session."

@@ -89,15 +89,23 @@ struct LatencyTestView: View {
                 routeRow(label: "Output", value: model.route.output)
             }
 
-            Button(model.isSessionActive ? "Stop session" : "Start session") {
+            Button(sessionButtonTitle) {
                 model.toggleSession()
             }
             .buttonStyle(.borderedProminent)
             .tint(model.isSessionActive ? .red : .accentColor)
+            .disabled(model.isStartingSession)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var sessionButtonTitle: String {
+        if model.isStartingSession {
+            return "Starting…"
+        }
+        return model.isSessionActive ? "Stop session" : "Start session"
     }
 
     private var cueButton: some View {

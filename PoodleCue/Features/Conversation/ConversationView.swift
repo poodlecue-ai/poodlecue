@@ -175,6 +175,21 @@ struct ConversationView: View {
                     .labelsHidden()
             }
 
+            if model.isAIShadowConfigured {
+                Picker("Bluetooth cue", selection: $model.spokenCueSource) {
+                    ForEach(SpokenCueSource.allCases) { source in
+                        Text(source.rawValue).tag(source)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text(model.spokenCueSource == .ai
+                     ? "AI beta is spoken privately when ready. The local cue stays visible for comparison."
+                     : "The immediate local cue is spoken. AI remains a silent comparison.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Text(model.latestCue?.text ?? cuePlaceholder)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(model.latestCue == nil ? .secondary : .primary)
@@ -284,9 +299,16 @@ struct ConversationView: View {
                 if result.shouldSpeak {
                     Text("AI: \(result.cue)")
                         .font(.title3.weight(.semibold))
-                    Text("\(result.intent.capitalized.replacingOccurrences(of: "_", with: "-")) · \(Int(result.latencyMilliseconds)) ms · \(result.reason)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text("\(result.intent.capitalized.replacingOccurrences(of: "_", with: "-")) · \(Int(result.latencyMilliseconds)) ms · \(result.reason)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Hear AI") {
+                            model.replayLatestAICue()
+                        }
+                        .font(.footnote)
+                    }
                 } else {
                     Text("AI: Stay silent")
                         .font(.title3.weight(.semibold))

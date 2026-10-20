@@ -20,6 +20,13 @@ enum CueFeedback: String, CaseIterable {
     case repeated = "Repeated"
 }
 
+enum SpokenCueSource: String, CaseIterable, Identifiable {
+    case local = "Local"
+    case ai = "AI beta"
+
+    var id: String { rawValue }
+}
+
 @MainActor
 final class LatencyTestViewModel: ObservableObject {
     let aiEvaluationTarget = 15
@@ -45,6 +52,7 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var aiComparisonChoice: String?
     @Published private(set) var localShadowBaseline: String?
     @Published var speaksCues = true
+    @Published var spokenCueSource: SpokenCueSource = .ai
     @Published var inputPreference: AudioInputPreference = .iPhone
     @Published var listeningToOtherPerson = true {
         didSet {
@@ -253,6 +261,11 @@ final class LatencyTestViewModel: ObservableObject {
         cueSpeaker.speak(latestCue.text)
     }
 
+    func replayLatestAICue() {
+        guard case let .ready(result) = aiShadowState, result.shouldSpeak else { return }
+        cueSpeaker.speak(result.cue)
+    }
+
     func recordCueFeedback(_ feedback: CueFeedback) {
         guard latestCue != nil else { return }
         latestCueFeedback = feedback
@@ -421,7 +434,7 @@ final class LatencyTestViewModel: ObservableObject {
                     latestCue = cue
                     cueCount = 1
                     recentCueTexts.append(cue.text)
-                    if speaksCues {
+                    if speaksCues && spokenCueSource == .local {
                         cueSpeaker.speak(cue.text)
                     }
                 }
@@ -527,7 +540,7 @@ final class LatencyTestViewModel: ObservableObject {
             recentCueTexts.append(cue.text)
             recentCueTexts = Array(recentCueTexts.suffix(5))
 
-            if speaksCues {
+            if speaksCues && spokenCueSource == .local {
                 cueSpeaker.speak(cue.text)
             }
         }
@@ -571,6 +584,9 @@ final class LatencyTestViewModel: ObservableObject {
                 guard !Task.isCancelled else { return }
                 recordAIShadowResult(result)
                 aiShadowState = .ready(result)
+                if speaksCues, spokenCueSource == .ai, result.shouldSpeak {
+                    cueSpeaker.speak(result.cue)
+                }
             } catch is CancellationError {
                 return
             } catch {

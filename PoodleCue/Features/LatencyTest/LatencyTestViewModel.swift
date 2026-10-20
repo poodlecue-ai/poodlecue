@@ -18,7 +18,11 @@ final class LatencyTestViewModel: ObservableObject {
     }
 
     var latestLatency: Double? {
-        measurements.last?.milliseconds
+        latestMeasurement?.milliseconds
+    }
+
+    var latestMeasurement: CueLatencyMeasurement? {
+        measurements.last
     }
 
     var medianLatency: Double? {

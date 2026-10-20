@@ -2,7 +2,12 @@ import AVFoundation
 
 struct CueLatencyMeasurement: Identifiable, Equatable {
     let id = UUID()
-    let milliseconds: Double
+    let renderStartMilliseconds: Double
+    let presentationMilliseconds: Double
+
+    var milliseconds: Double {
+        renderStartMilliseconds + presentationMilliseconds
+    }
 }
 
 final class CuePlayer {
@@ -42,6 +47,16 @@ final class CuePlayer {
         guard let cueBuffer else { return }
 
         let requestedAt = DispatchTime.now().uptimeNanoseconds
+        let session = AVAudioSession.sharedInstance()
+        let graphPresentationLatency = max(
+            player.outputPresentationLatency,
+            engine.outputNode.presentationLatency
+        )
+        let routePresentationLatency = session.outputLatency + session.ioBufferDuration
+        let presentationMilliseconds = max(
+            graphPresentationLatency,
+            routePresentationLatency
+        ) * 1_000
 
         player.scheduleBuffer(
             cueBuffer,
@@ -57,7 +72,8 @@ final class CuePlayer {
                 ? estimatedStart - requestedAt
                 : 0
             let measurement = CueLatencyMeasurement(
-                milliseconds: Double(elapsed) / 1_000_000
+                renderStartMilliseconds: Double(elapsed) / 1_000_000,
+                presentationMilliseconds: presentationMilliseconds
             )
 
             DispatchQueue.main.async { [weak self] in

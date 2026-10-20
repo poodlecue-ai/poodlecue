@@ -22,7 +22,7 @@ Record the exact:
 
 ## Pass condition
 
-The software render-start p95 must be below 200 ms with zero missed triggers.
+The estimated trigger-to-output-onset p95 must be below 200 ms with zero missed triggers.
 
-This is an engineering gate, not proof of acoustic end-to-end latency. Before making a user-facing latency claim, repeat the test with an external microphone or electrical loopback that measures the sound arriving from the earbud.
+The estimate combines software render timing with the audio engine's reported presentation latency. This is an engineering gate, not proof of acoustic end-to-end latency. Before making a user-facing latency claim, repeat the test with an external microphone or electrical loopback that measures the sound arriving from the earbud.
 

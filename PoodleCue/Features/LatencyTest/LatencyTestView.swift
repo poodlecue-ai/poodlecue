@@ -77,6 +77,15 @@ struct LatencyTestView: View {
                 metric(label: "p95", value: model.p95Latency)
             }
 
+            if let latest = model.latestMeasurement {
+                Text(
+                    "Latest estimate: \(latest.renderStartMilliseconds, specifier: "%.1f") ms render start + \(latest.presentationMilliseconds, specifier: "%.1f") ms output presentation"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             HStack {
                 Text("Trials: \(model.measurements.count)")
                     .foregroundStyle(.secondary)
@@ -101,7 +110,7 @@ struct LatencyTestView: View {
     }
 
     private var measurementNote: some View {
-        Text("This prototype measures estimated software render-start latency. Physical AirPods latency requires an external acoustic test.")
+        Text("This estimates trigger-to-output onset using render timing and the audio engine's reported presentation latency. Physical acoustic latency still requires an external test.")
             .font(.footnote)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)

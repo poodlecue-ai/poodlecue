@@ -11,7 +11,7 @@ The prototype:
 - configures a simultaneous Bluetooth input/output audio session;
 - keeps the audio engine warm;
 - plays a locally generated cached cue tone;
-- records estimated software render-start latency;
+- estimates trigger-to-output onset from render timing and the audio engine's reported presentation latency;
 - reports the median and 95th-percentile latency.
 
 ## Run
@@ -27,7 +27,7 @@ The simulator is useful for compilation checks, but latency results are meaningf
 
 ## Measurement limitation
 
-The current measurement estimates the interval from the UI trigger to the audio engine beginning to render the cached cue. It does not measure the final acoustic arrival at the AirPods speaker. Hardware end-to-end validation requires an external loopback or acoustic measurement setup.
+The measurement combines estimated render-start delay with AVAudioEngine's reported downstream presentation latency. It does not directly measure the final acoustic arrival at the listener's ear. Hardware end-to-end validation requires an external loopback or acoustic measurement setup.
 
 See [`docs/latency-test-plan.md`](docs/latency-test-plan.md) for the test procedure.
 

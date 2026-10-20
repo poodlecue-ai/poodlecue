@@ -19,7 +19,7 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var cueCount = 0
     @Published private(set) var cueSpeechStartMilliseconds: Double?
     @Published var speaksCues = true
-    @Published var inputPreference: AudioInputPreference = .earbuds
+    @Published var inputPreference: AudioInputPreference = .iPhone
     @Published var listeningToOtherPerson = true
     @Published var conversationPartnerName = ""
     @Published var memoryDraft = ""
@@ -156,7 +156,20 @@ final class LatencyTestViewModel: ObservableObject {
         selectedMemory = memory
         conversationPartnerName = memory.personName
         memoryDraft = memory.summary
+        latestCue = cueEngine.followUpCue(
+            personName: memory.personName,
+            summary: memory.summary
+        )
         memoryStatusMessage = "Ready with context from your last conversation."
+    }
+
+    func beginNewConversation() {
+        guard !isSessionActive else { return }
+        selectedMemory = nil
+        conversationPartnerName = ""
+        memoryDraft = ""
+        latestCue = nil
+        memoryStatusMessage = nil
     }
 
     func prepareMemoryDraft() {
@@ -228,6 +241,17 @@ final class LatencyTestViewModel: ObservableObject {
                 transcriptionLocale = try transcriber.start()
                 try cuePlayer.prepare()
                 isSessionActive = true
+                if let selectedMemory {
+                    let cue = cueEngine.followUpCue(
+                        personName: selectedMemory.personName,
+                        summary: selectedMemory.summary
+                    )
+                    latestCue = cue
+                    cueCount = 1
+                    if speaksCues {
+                        cueSpeaker.speak(cue.text)
+                    }
+                }
             } catch {
                 transcriber.stop()
                 cuePlayer.stop()
@@ -270,7 +294,10 @@ final class LatencyTestViewModel: ObservableObject {
         guard
             listeningToOtherPerson,
             needsCueForCurrentUtterance,
-            let cue = cueEngine.suggest(from: transcript)
+            let cue = cueEngine.suggest(
+                from: transcript,
+                memorySummary: selectedMemory?.summary
+            )
         else { return }
 
         latestCue = cue

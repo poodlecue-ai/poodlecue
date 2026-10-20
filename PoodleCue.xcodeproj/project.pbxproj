@@ -17,6 +17,7 @@
 		A00000000000000000000008 /* LocalCueEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000A /* LocalCueEngine.swift */; };
 		A00000000000000000000009 /* CueSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000B /* CueSpeaker.swift */; };
 		A0000000000000000000000A /* ConversationMemoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000C /* ConversationMemoryStore.swift */; };
+		A0000000000000000000000B /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000D /* ConversationView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 		B0000000000000000000000A /* LocalCueEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCueEngine.swift; sourceTree = "<group>"; };
 		B0000000000000000000000B /* CueSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CueSpeaker.swift; sourceTree = "<group>"; };
 		B0000000000000000000000C /* ConversationMemoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationMemoryStore.swift; sourceTree = "<group>"; };
+		B0000000000000000000000D /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,6 +91,7 @@
 		D00000000000000000000005 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				D00000000000000000000009 /* Conversation */,
 				D00000000000000000000006 /* LatencyTest */,
 			);
 			path = Features;
@@ -117,6 +120,14 @@
 				B0000000000000000000000C /* ConversationMemoryStore.swift */,
 			);
 			path = Memory;
+			sourceTree = "<group>";
+		};
+		D00000000000000000000009 /* Conversation */ = {
+			isa = PBXGroup;
+			children = (
+				B0000000000000000000000D /* ConversationView.swift */,
+			);
+			path = Conversation;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -197,6 +208,7 @@
 				A00000000000000000000008 /* LocalCueEngine.swift in Sources */,
 				A00000000000000000000009 /* CueSpeaker.swift in Sources */,
 				A0000000000000000000000A /* ConversationMemoryStore.swift in Sources */,
+				A0000000000000000000000B /* ConversationView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -12,7 +12,10 @@ final class LocalCueEngine {
     private var lastTranscript = ""
     private var lastCue = ""
 
-    func suggest(from fullTranscript: String) -> LocalConversationCue? {
+    func suggest(
+        from fullTranscript: String,
+        memorySummary: String? = nil
+    ) -> LocalConversationCue? {
         let transcript = fullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !transcript.isEmpty else { return nil }
 
@@ -35,7 +38,10 @@ final class LocalCueEngine {
         }
 
         let startedAt = DispatchTime.now().uptimeNanoseconds
-        let selection = selectCue(for: segment.lowercased())
+        let selection = selectCue(
+            for: segment.lowercased(),
+            memorySummary: memorySummary?.lowercased()
+        )
         let finishedAt = DispatchTime.now().uptimeNanoseconds
 
         guard selection.text != lastCue else {
@@ -60,7 +66,43 @@ final class LocalCueEngine {
         lastCue = ""
     }
 
-    private func selectCue(for text: String) -> (text: String, reason: String) {
+    func followUpCue(personName: String, summary: String) -> LocalConversationCue {
+        let startedAt = DispatchTime.now().uptimeNanoseconds
+        let text = summary.lowercased()
+        let cue: String
+
+        if containsAny(text, ["gym", "workout", "training", "exercise", "running", "marathon"]) {
+            cue = "Ask \(personName) how their training is going."
+        } else if containsAny(text, ["kid", "child", "daughter", "son", "family", "sleep"]) {
+            cue = "Ask \(personName) how things are with the family."
+        } else if containsAny(text, ["work", "job", "office", "company", "career", "study", "college"]) {
+            cue = "Ask \(personName) how work or study has been."
+        } else if containsAny(text, ["travel", "trip", "visited", "holiday", "city", "country"]) {
+            cue = "Ask \(personName) how the trip or travel plan went."
+        } else {
+            cue = "Ask \(personName) what’s changed since you last spoke."
+        }
+
+        return LocalConversationCue(
+            text: cue,
+            reason: "Based on your saved memory",
+            generationMilliseconds: Double(
+                DispatchTime.now().uptimeNanoseconds - startedAt
+            ) / 1_000_000
+        )
+    }
+
+    private func selectCue(
+        for text: String,
+        memorySummary: String?
+    ) -> (text: String, reason: String) {
+        if let memorySummary, sharesTopic(text, memorySummary) {
+            return (
+                "Ask what’s changed since last time.",
+                "Connected this detail to your saved memory"
+            )
+        }
+
         if containsAny(text, ["gym", "workout", "training", "exercise", "running", "run "]) {
             return ("Ask what they’re training for.", "Picked up a fitness detail")
         }
@@ -90,5 +132,17 @@ final class LocalCueEngine {
 
     private func containsAny(_ text: String, _ phrases: [String]) -> Bool {
         phrases.contains { text.contains($0) }
+    }
+
+    private func sharesTopic(_ text: String, _ memory: String) -> Bool {
+        let topicGroups = [
+            ["gym", "workout", "training", "exercise", "running", "marathon"],
+            ["kid", "child", "daughter", "son", "family", "sleep"],
+            ["work", "job", "office", "company", "career", "study", "college"],
+            ["travel", "trip", "visited", "holiday", "city", "country"]
+        ]
+        return topicGroups.contains { group in
+            containsAny(text, group) && containsAny(memory, group)
+        }
     }
 }

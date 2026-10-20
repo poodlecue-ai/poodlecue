@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LatencyTestView: View {
-    @StateObject private var model = LatencyTestViewModel()
+    @ObservedObject var model: LatencyTestViewModel
 
     var body: some View {
         NavigationStack {

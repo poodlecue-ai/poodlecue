@@ -45,3 +45,5 @@ See [`docs/phase-4-spec.md`](docs/phase-4-spec.md) for the local cue-engine test
 
 See [`docs/phase-5-spec.md`](docs/phase-5-spec.md) for private conversation memory and speaker control.
 
+See [`docs/phase-6-spec.md`](docs/phase-6-spec.md) for the everyday conversation screen and memory-aware cues.
+

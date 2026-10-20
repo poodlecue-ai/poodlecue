@@ -343,14 +343,14 @@ struct ConversationView: View {
                 Label("AI evaluation", systemImage: "chart.bar.fill")
                     .font(.headline)
                 Spacer()
-                Text("\(model.aiEvaluationRatedTurns) / 50 rated")
+                Text("\(model.aiEvaluationRatedTurns) / \(model.aiEvaluationTarget) rated")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
 
             ProgressView(
-                value: Double(min(model.aiEvaluationRatedTurns, 50)),
-                total: 50
+                value: Double(min(model.aiEvaluationRatedTurns, model.aiEvaluationTarget)),
+                total: Double(model.aiEvaluationTarget)
             )
             .tint(.purple)
 
@@ -379,8 +379,8 @@ struct ConversationView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Text(model.aiEvaluationRatedTurns < 50
-                 ? "Rate \(50 - model.aiEvaluationRatedTurns) more turns before considering spoken AI."
+            Text(model.aiEvaluationRatedTurns < model.aiEvaluationTarget
+                 ? "Rate \(model.aiEvaluationTarget - model.aiEvaluationRatedTurns) more turns before considering spoken AI."
                  : "Evaluation gate reached. Review usefulness, latency, silence, and failures before enabling spoken AI.")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.purple)

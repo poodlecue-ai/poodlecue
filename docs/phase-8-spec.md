@@ -19,7 +19,7 @@ The OpenAI API key exists only in the Railway service. It must never be placed i
 
 ## Evaluation gate
 
-Collect at least 50 representative turns across positive news, difficult news, questions, work, family, fitness, travel, repetition, acknowledgements, and low-signal comments. Record whether the local cue, AI cue, or neither was preferable. AI cannot become the spoken path until it wins clearly on usefulness and stays acceptably fast and reliable.
+Collect at least 15 representative turns across positive news, difficult news, questions, work, family, fitness, travel, repetition, acknowledgements, and low-signal comments. Record whether the local cue, AI cue, or neither was preferable. AI cannot become the spoken path until it wins clearly on usefulness and stays acceptably fast and reliable.
 
 ## Railway variables
 

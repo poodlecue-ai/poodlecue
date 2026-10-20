@@ -22,6 +22,8 @@ enum CueFeedback: String, CaseIterable {
 
 @MainActor
 final class LatencyTestViewModel: ObservableObject {
+    let aiEvaluationTarget = 15
+
     @Published private(set) var isSessionActive = false
     @Published private(set) var isStartingSession = false
     @Published private(set) var route = AudioRouteDescription.unavailable

@@ -28,10 +28,12 @@ final class CueSpeaker: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendab
         }
 
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-IN")
-        utterance.rate = 0.52
-        utterance.pitchMultiplier = 0.96
-        utterance.volume = 0.72
+        utterance.voice = Self.preferredFeminineVoice()
+        utterance.rate = 0.44
+        utterance.pitchMultiplier = 1.08
+        utterance.volume = 0.78
+        utterance.preUtteranceDelay = 0.03
+        utterance.postUtteranceDelay = 0.02
 
         requestedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
         setSpeaking(true)
@@ -72,5 +74,25 @@ final class CueSpeaker: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendab
         stateLock.lock()
         speaking = value
         stateLock.unlock()
+    }
+
+    private static func preferredFeminineVoice() -> AVSpeechSynthesisVoice? {
+        let englishVoices = AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language.hasPrefix("en") }
+            .sorted { $0.quality.rawValue > $1.quality.rawValue }
+
+        // Veena keeps the familiar Indian-English sound when it is installed.
+        // The remaining voices are natural feminine fallbacks available on iOS.
+        let preferredNames = ["Veena", "Ava", "Samantha", "Serena", "Karen"]
+        for name in preferredNames {
+            if let voice = englishVoices.first(where: {
+                $0.name.localizedCaseInsensitiveContains(name)
+            }) {
+                return voice
+            }
+        }
+
+        return AVSpeechSynthesisVoice(language: "en-US")
+            ?? AVSpeechSynthesisVoice(language: "en-IN")
     }
 }

@@ -14,11 +14,11 @@ struct ConversationView: View {
                         speakerCard
                     }
 
-                    cueCard
-
                     if model.isAIShadowConfigured {
                         aiShadowCard
                         aiEvaluationCard
+                    } else {
+                        cueCard
                     }
 
                     if model.isSessionActive || !model.transcript.isEmpty {
@@ -175,21 +175,6 @@ struct ConversationView: View {
                     .labelsHidden()
             }
 
-            if model.isAIShadowConfigured {
-                Picker("Bluetooth cue", selection: $model.spokenCueSource) {
-                    ForEach(SpokenCueSource.allCases) { source in
-                        Text(source.rawValue).tag(source)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                Text(model.spokenCueSource == .ai
-                     ? "AI beta is spoken privately when ready. The local cue stays visible for comparison."
-                     : "The immediate local cue is spoken. AI remains a silent comparison.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
             Text(model.latestCue?.text ?? cuePlaceholder)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(model.latestCue == nil ? .secondary : .primary)
@@ -269,35 +254,32 @@ struct ConversationView: View {
     private var aiShadowCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("AI shadow", systemImage: "eye.slash")
+                Label("Your AI cue", systemImage: "sparkles")
                     .font(.headline)
                 Spacer()
-                Text("Never spoken · \(model.aiTransportLabel)")
+                Toggle("Speak", isOn: $model.speaksCues)
+                    .labelsHidden()
+                Text("AI only · \(model.aiTransportLabel)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
 
             switch model.aiShadowState {
             case .unavailable, .idle:
-                Text("The silent comparison appears after their next complete thought.")
+                Text("Listening for their next complete thought…")
                     .foregroundStyle(.secondary)
             case .comparing:
                 HStack {
                     ProgressView()
-                    Text("Comparing with the local cue…")
+                    Text("Generating an AI cue…")
                         .foregroundStyle(.secondary)
                 }
             case let .failed(message):
-                Text(message)
+                Text("\(message) No local fallback cue was played.")
                     .foregroundStyle(.secondary)
             case let .ready(result):
-                if let baseline = model.localShadowBaseline {
-                    Text("Local: \(baseline)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
                 if result.shouldSpeak {
-                    Text("AI: \(result.cue)")
+                    Text(result.cue)
                         .font(.title3.weight(.semibold))
                     HStack {
                         Text("\(result.intent.capitalized.replacingOccurrences(of: "_", with: "-")) · \(Int(result.latencyMilliseconds)) ms · \(result.reason)")
@@ -310,105 +292,25 @@ struct ConversationView: View {
                         .font(.footnote)
                     }
                 } else {
-                    Text("AI: Stay silent")
+                    Text("Stay silent")
                         .font(.title3.weight(.semibold))
                     Text("The AI judged that another cue would not add value · \(Int(result.latencyMilliseconds)) ms")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                }
-
-                Divider()
-                Text("Which was better?")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                HStack(spacing: 8) {
-                    aiComparisonButton("Local")
-                    aiComparisonButton("AI")
-                    aiComparisonButton("Neither")
-                }
-
-                if let choice = model.aiComparisonChoice {
-                    Label("Recorded: \(choice)", systemImage: "checkmark.circle.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.green)
                 }
             }
         }
         .cardStyle(color: .purple)
     }
 
-    private func aiComparisonButton(_ choice: String) -> some View {
-        let isSelected = model.aiComparisonChoice == choice
-
-        return Button {
-            model.recordAIComparison(choice)
-        } label: {
-            HStack(spacing: 4) {
-                if isSelected {
-                    Image(systemName: "checkmark")
-                }
-                Text(choice)
-            }
-            .font(.caption.weight(.semibold))
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-        .tint(isSelected ? .purple : .secondary)
-        .accessibilityLabel("Choose \(choice) cue")
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
-    }
-
     private var aiEvaluationCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("AI evaluation", systemImage: "chart.bar.fill")
+                Label("AI performance", systemImage: "chart.bar.fill")
                     .font(.headline)
                 Spacer()
-                Text("\(model.aiEvaluationRatedTurns) / \(model.aiEvaluationTarget) rated")
+                Text("\(model.aiRealtimeRequestCount) realtime turns")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-
-            ProgressView(
-                value: Double(min(model.aiEvaluationRatedTurns, model.aiEvaluationTarget)),
-                total: Double(model.aiEvaluationTarget)
-            )
-            .tint(.purple)
-
-            HStack(spacing: 8) {
-                evaluationMetric(label: "Local", value: "\(model.aiEvaluationLocalWins)")
-                evaluationMetric(label: "AI", value: "\(model.aiEvaluationAIWins)")
-                evaluationMetric(label: "Neither", value: "\(model.aiEvaluationNeitherWins)")
-            }
-
-            HStack(spacing: 8) {
-                evaluationMetric(
-                    label: "Median",
-                    value: formattedEvaluationLatency(model.aiEvaluationMedianLatency)
-                )
-                evaluationMetric(
-                    label: "p95",
-                    value: formattedEvaluationLatency(model.aiEvaluationP95Latency)
-                )
-                evaluationMetric(
-                    label: "Silent / failed",
-                    value: "\(model.aiEvaluationSilenceCount) / \(model.aiEvaluationFailureCount)"
-                )
-            }
-
-            Text("\(model.aiEvaluationRequestCount) AI comparisons completed. Test a mix of positive, difficult, work, family, fitness, travel, question, and low-signal turns.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Divider()
-
-            HStack {
-                Text("Phase 9 realtime")
-                    .font(.caption.weight(.semibold))
-                Spacer()
-                Text("\(model.aiRealtimeRequestCount) turns")
-                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
@@ -427,15 +329,9 @@ struct ConversationView: View {
                 )
             }
 
-            Text("Goal: median below 1,000 ms, p95 below 1,500 ms, and fewer than 5% fallbacks.")
+            Text("AI-only mode: a validated AI cue is spoken when ready. Silence or failure never falls back to a local cue.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-
-            Text(model.aiEvaluationRatedTurns < model.aiEvaluationTarget
-                 ? "Rate \(model.aiEvaluationTarget - model.aiEvaluationRatedTurns) more turns before considering spoken AI."
-                 : "Evaluation gate reached. Review usefulness, latency, silence, and failures before enabling spoken AI.")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.purple)
         }
         .cardStyle(color: .purple)
     }
@@ -503,7 +399,7 @@ struct ConversationView: View {
     private var privacyNote: some View {
         Label(
             model.isAIShadowConfigured
-                ? "Audio and full transcripts are discarded. AI shadow mode sends only the latest text turn and optional reviewed memory. Only aggregate choices, latency, silence, and failure counts are saved on this iPhone."
+                ? "Audio and full transcripts are discarded. AI-only mode sends only the latest text turn and optional reviewed memory. Only aggregate latency, silence, and failure counts are saved on this iPhone."
                 : "Audio and full transcripts are discarded. Only a note you review and save remains on this iPhone.",
             systemImage: "hand.raised.fill"
         )

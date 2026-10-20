@@ -20,13 +20,6 @@ enum CueFeedback: String, CaseIterable {
     case repeated = "Repeated"
 }
 
-enum SpokenCueSource: String, CaseIterable, Identifiable {
-    case local = "Local"
-    case ai = "AI beta"
-
-    var id: String { rawValue }
-}
-
 @MainActor
 final class LatencyTestViewModel: ObservableObject {
     let aiEvaluationTarget = 15
@@ -52,7 +45,6 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var aiComparisonChoice: String?
     @Published private(set) var localShadowBaseline: String?
     @Published var speaksCues = true
-    @Published var spokenCueSource: SpokenCueSource = .ai
     @Published var inputPreference: AudioInputPreference = .iPhone
     @Published var listeningToOtherPerson = true {
         didSet {
@@ -295,10 +287,7 @@ final class LatencyTestViewModel: ObservableObject {
         selectedMemory = memory
         conversationPartnerName = memory.personName
         memoryDraft = memory.summary
-        latestCue = cueEngine.followUpCue(
-            personName: memory.personName,
-            summary: memory.summary
-        )
+        latestCue = nil
         latestCueFeedback = nil
         aiShadowTask?.cancel()
         aiShadowState = aiShadowClient.isConfigured ? .idle : .unavailable
@@ -426,18 +415,6 @@ final class LatencyTestViewModel: ObservableObject {
                 try cuePlayer.prepare()
                 isSessionActive = true
                 warmRealtimeConnection()
-                if let selectedMemory {
-                    let cue = cueEngine.followUpCue(
-                        personName: selectedMemory.personName,
-                        summary: selectedMemory.summary
-                    )
-                    latestCue = cue
-                    cueCount = 1
-                    recentCueTexts.append(cue.text)
-                    if speaksCues && spokenCueSource == .local {
-                        cueSpeaker.speak(cue.text)
-                    }
-                }
             } catch {
                 transcriber.stop()
                 cuePlayer.stop()
@@ -518,32 +495,15 @@ final class LatencyTestViewModel: ObservableObject {
         let themText = transcriptDelta(since: roleStartTranscript)
         guard !themText.isEmpty else { return }
 
-        let cue = cueEngine.suggest(
-                from: transcript,
-                memorySummary: selectedMemory?.summary,
-                previousUserTurn: previousUserTurn,
-                recentCueTexts: recentCueTexts
-            )
         needsCueForCurrentUtterance = false
         transcriptPauseTask?.cancel()
-        latestCue = cue
+        latestCue = nil
         latestCueFeedback = nil
-        localShadowBaseline = cue?.text ?? "Stay silent"
+        localShadowBaseline = nil
 
         appendTurn(speaker: .them, text: themText)
         roleStartTranscript = transcript
         let priorCueTexts = recentCueTexts
-
-        if let cue {
-            cueCount += 1
-            cueSpeechStartMilliseconds = nil
-            recentCueTexts.append(cue.text)
-            recentCueTexts = Array(recentCueTexts.suffix(5))
-
-            if speaksCues && spokenCueSource == .local {
-                cueSpeaker.speak(cue.text)
-            }
-        }
 
         requestAIShadowCue(themText: themText, recentCues: priorCueTexts)
     }
@@ -584,7 +544,12 @@ final class LatencyTestViewModel: ObservableObject {
                 guard !Task.isCancelled else { return }
                 recordAIShadowResult(result)
                 aiShadowState = .ready(result)
-                if speaksCues, spokenCueSource == .ai, result.shouldSpeak {
+                if result.shouldSpeak {
+                    cueCount += 1
+                    recentCueTexts.append(result.cue)
+                    recentCueTexts = Array(recentCueTexts.suffix(5))
+                }
+                if speaksCues, result.shouldSpeak {
                     cueSpeaker.speak(result.cue)
                 }
             } catch is CancellationError {
@@ -592,7 +557,7 @@ final class LatencyTestViewModel: ObservableObject {
             } catch {
                 guard !Task.isCancelled else { return }
                 incrementEvaluationCount(forKey: "aiEvaluation.failures")
-                aiShadowState = .failed("AI comparison unavailable; your local cue was unaffected.")
+                aiShadowState = .failed("AI cue unavailable.")
             }
         }
     }

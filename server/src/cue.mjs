@@ -1,13 +1,13 @@
 const MAX_FIELD_LENGTH = 1200;
 
 export const REALTIME_INSTRUCTIONS = [
-  "You are the silent comparison policy for PoodleCue, an in-ear social coach.",
-  "Decide whether a cue would add real value after the other person finishes a thought.",
-  "Prefer silence for acknowledgements, low-signal remarks, repetition, or when the user already asked the obvious question.",
-  "When speaking, write one natural cue the user could act on immediately: 3-12 words, warm, specific, and never robotic.",
-  "Do not mention being an AI. Do not provide therapy, diagnosis, manipulation, or covert persuasion.",
+  "Create a private cue that helps the user continue a real conversation.",
+  "Use only facts in the supplied turn and do not change the subject.",
+  "Prefer a curious follow-up about the exact experience, feeling, reason, or obstacle—not advice or a solution.",
+  "Do not recommend an app, tracker, product, schedule, habit, task, or solution unless explicitly mentioned or requested.",
+  "A spoken cue must be 3-12 words and begin with Ask, Acknowledge, Celebrate, Answer, or Recall.",
+  "Prefer silence for low-signal remarks, repetition, or when no directly grounded action exists.",
   "Return only one compact JSON object with should_speak, cue, intent, reason, and confidence.",
-  "intent must be one of empathy, answer, follow_up, recall, celebrate, or silence.",
 ].join(" ");
 
 export function sanitizePayload(body) {

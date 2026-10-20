@@ -115,15 +115,15 @@ final class AIShadowClient {
 @MainActor
 final class AIRealtimeClient {
     private static let responseInstructions = [
-        "You are the silent comparison policy for PoodleCue, an in-ear social coach.",
-        "Use only facts present in the supplied JSON. The 'them' field contains the other person's exact completed thought.",
-        "Never invent an activity, mood, plan, relationship, place, or topic. Never change the subject.",
-        "Decide whether a cue would add real value. Prefer silence for low-signal remarks, repetition, or when the user's previous turn already asked the obvious question.",
-        "When speaking, produce one grounded, natural action the user can take immediately: 3-12 words, warm and specific.",
-        "For a stated difficulty, acknowledge it or ask about the exact obstacle. For positive news, celebrate it and ask what happens next.",
-        "Do not mention being an AI. Do not provide therapy, diagnosis, manipulation, or covert persuasion.",
-        "Return exactly one JSON object and no markdown: {\"should_speak\":true|false,\"cue\":\"\",\"intent\":\"empathy|answer|follow_up|recall|celebrate|silence\",\"reason\":\"brief grounding reason\",\"confidence\":0.0}.",
-        "If the cue is not directly grounded in 'them', return should_speak false with an empty cue.",
+        "# ROLE: You create a private cue that helps the user continue a real conversation.",
+        "# GROUNDING: Use only facts in the supplied JSON. 'them' is the other person's exact completed thought. Do not invent or change the subject.",
+        "# DEFAULT: Prefer a curious follow-up about the exact experience, feeling, reason, or obstacle they mentioned—not advice or a solution.",
+        "# PROHIBITED: Do not recommend an app, tracker, product, schedule, habit, task, or solution unless the other person explicitly mentioned it or asked for advice.",
+        "# CUE FORM: 3-12 words. Begin with Ask, Acknowledge, Celebrate, Answer, or Recall. The cue tells the user what conversational action to take.",
+        "# SILENCE: Prefer silence for low-signal remarks, repetition, or when the user's previous turn already asked the obvious question. If no directly grounded action exists, return silence.",
+        "# EXAMPLE: them='I am training for a half marathon, but consistency is difficult' -> cue='Ask what usually makes consistency difficult.' Never suggest logging, tracking, or a training plan.",
+        "# SAFETY: Do not mention being an AI. Do not provide therapy, diagnosis, manipulation, or covert persuasion.",
+        "# OUTPUT: Return exactly one JSON object and no markdown: {\"should_speak\":true|false,\"cue\":\"\",\"intent\":\"empathy|answer|follow_up|recall|celebrate|silence\",\"reason\":\"brief grounding reason\",\"confidence\":0.0}.",
     ].joined(separator: " ")
 
     private struct ClientCredential: Decodable {
@@ -352,9 +352,11 @@ final class AIRealtimeClient {
             let components = elapsed.components
             let milliseconds = Double(components.seconds) * 1_000
                 + Double(components.attoseconds) / 1_000_000_000_000_000
+            let cueText = value.cue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let shouldSpeak = value.shouldSpeak && isAllowedConversationalCue(cueText)
             let cue = AIShadowCue(
-                shouldSpeak: value.shouldSpeak && !value.cue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                cue: value.shouldSpeak ? String(value.cue.prefix(160)) : "",
+                shouldSpeak: shouldSpeak,
+                cue: shouldSpeak ? String(cueText.prefix(160)) : "",
                 intent: value.intent,
                 reason: String(value.reason.prefix(240)),
                 confidence: min(max(value.confidence, 0), 1),
@@ -382,6 +384,13 @@ final class AIRealtimeClient {
             return text
         }
         return String(text[first...last])
+    }
+
+    private func isAllowedConversationalCue(_ cue: String) -> Bool {
+        let normalized = cue.lowercased()
+        return ["ask ", "acknowledge ", "celebrate ", "answer ", "recall "].contains {
+            normalized.hasPrefix($0)
+        }
     }
 }
 

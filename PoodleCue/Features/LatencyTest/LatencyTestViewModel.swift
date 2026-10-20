@@ -19,6 +19,11 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var cueCount = 0
     @Published private(set) var cueSpeechStartMilliseconds: Double?
     @Published var speaksCues = true
+    @Published var listeningToOtherPerson = true
+    @Published var conversationPartnerName = ""
+    @Published var memoryDraft = ""
+    @Published private(set) var selectedMemory: ConversationMemory?
+    @Published private(set) var memoryStatusMessage: String?
     @Published var errorMessage: String?
 
     private let audioSession = AudioSessionManager()
@@ -26,6 +31,7 @@ final class LatencyTestViewModel: ObservableObject {
     private let transcriber = SpeechTranscriber()
     private let cueEngine = LocalCueEngine()
     private let cueSpeaker = CueSpeaker()
+    let memoryStore = ConversationMemoryStore()
     private var pendingSpeechOnsetNanoseconds: UInt64?
     private var needsCueForCurrentUtterance = false
 
@@ -145,6 +151,44 @@ final class LatencyTestViewModel: ObservableObject {
         cueSpeaker.speak(latestCue.text)
     }
 
+    func selectMemory(_ memory: ConversationMemory) {
+        selectedMemory = memory
+        conversationPartnerName = memory.personName
+        memoryDraft = memory.summary
+        memoryStatusMessage = "Ready with context from your last conversation."
+    }
+
+    func prepareMemoryDraft() {
+        let draft = MemorySummaryBuilder.draft(from: transcript)
+        if draft.isEmpty {
+            memoryStatusMessage = "Have a conversation first, or type a note yourself."
+        } else {
+            memoryDraft = draft
+            memoryStatusMessage = "Review this note before saving it."
+        }
+    }
+
+    func saveMemory() {
+        guard let saved = memoryStore.save(
+            personName: conversationPartnerName,
+            summary: memoryDraft
+        ) else {
+            memoryStatusMessage = "Add the person’s name and a short note first."
+            return
+        }
+        selectedMemory = saved
+        memoryStatusMessage = "Saved privately on this iPhone."
+    }
+
+    func forgetSelectedMemory() {
+        guard let selectedMemory else { return }
+        memoryStore.delete(selectedMemory)
+        self.selectedMemory = nil
+        conversationPartnerName = ""
+        memoryDraft = ""
+        memoryStatusMessage = "Memory removed from this iPhone."
+    }
+
     private func startSession() {
         errorMessage = nil
         isStartingSession = true
@@ -223,6 +267,7 @@ final class LatencyTestViewModel: ObservableObject {
 
     private func createCueIfReady() {
         guard
+            listeningToOtherPerson,
             needsCueForCurrentUtterance,
             let cue = cueEngine.suggest(from: transcript)
         else { return }

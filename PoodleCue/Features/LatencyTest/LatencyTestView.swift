@@ -10,7 +10,9 @@ struct LatencyTestView: View {
                     sessionCard
                     speechActivityCard
                     transcriptionCard
+                    speakerCard
                     conversationCueCard
+                    memoryCard
                     cueButton
                     cueMetrics
 
@@ -26,6 +28,105 @@ struct LatencyTestView: View {
             }
             .navigationTitle("PoodleCue")
         }
+    }
+
+    private var speakerCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Who is speaking?", systemImage: "person.2.wave.2")
+                    .font(.headline)
+                Spacer()
+                Text("You choose")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
+
+            Picker("Who is speaking?", selection: $model.listeningToOtherPerson) {
+                Text("Them").tag(true)
+                Text("Me").tag(false)
+            }
+            .pickerStyle(.segmented)
+
+            Text(model.listeningToOtherPerson
+                 ? "Cues are enabled for the other person’s speech."
+                 : "Your speech still provides context, but cues are paused.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var memoryCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("People memory", systemImage: "person.crop.circle.badge.checkmark")
+                    .font(.headline)
+                Spacer()
+                Text("On this iPhone")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.green)
+            }
+
+            if !model.memoryStore.memories.isEmpty {
+                Menu {
+                    ForEach(model.memoryStore.memories) { memory in
+                        Button(memory.personName) {
+                            model.selectMemory(memory)
+                        }
+                    }
+                } label: {
+                    Label("Continue a conversation", systemImage: "clock.arrow.circlepath")
+                }
+            }
+
+            TextField("Person’s name, e.g. Priya", text: $model.conversationPartnerName)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("What should you remember?", text: $model.memoryDraft, axis: .vertical)
+                .lineLimit(3...6)
+                .textFieldStyle(.roundedBorder)
+
+            if let selected = model.selectedMemory {
+                Text("Last saved \(selected.lastMetAt.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let message = model.memoryStatusMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Button("Draft from transcript") {
+                    model.prepareMemoryDraft()
+                }
+                .disabled(model.transcript.isEmpty)
+
+                Spacer()
+
+                if model.selectedMemory != nil {
+                    Button("Forget", role: .destructive) {
+                        model.forgetSelectedMemory()
+                    }
+                }
+
+                Button("Save") {
+                    model.saveMemory()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(
+                    model.conversationPartnerName.trimmingCharacters(in: .whitespaces).isEmpty ||
+                    model.memoryDraft.trimmingCharacters(in: .whitespaces).isEmpty
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
     }
 
     private var conversationCueCard: some View {
@@ -253,7 +354,7 @@ struct LatencyTestView: View {
     }
 
     private var measurementNote: some View {
-        Text("Microphone samples are analyzed and transcribed on device, then discarded. Conversation cues come from local curated rules, not generated AI text. This build does not save transcripts or contact a backend.")
+        Text("Audio and full transcripts are discarded. Only a memory you review and save is kept in a protected file on this iPhone. Cues use local rules; nothing contacts a backend. Speaker choice is manual in this MVP.")
             .font(.footnote)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)

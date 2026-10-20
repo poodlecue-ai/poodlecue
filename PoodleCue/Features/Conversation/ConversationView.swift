@@ -170,7 +170,7 @@ struct ConversationView: View {
                     .labelsHidden()
             }
 
-            Text(model.latestCue?.text ?? "Choose someone or start listening for a cue.")
+            Text(model.latestCue?.text ?? cuePlaceholder)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(model.latestCue == nil ? .secondary : .primary)
                 .frame(maxWidth: .infinity, minHeight: 54, alignment: .topLeading)
@@ -260,6 +260,16 @@ struct ConversationView: View {
     private var sessionButtonTitle: String {
         if model.isStartingSession { return "Starting…" }
         return model.isSessionActive ? "End conversation" : "Start conversation"
+    }
+
+    private var cuePlaceholder: String {
+        if model.isSessionActive && model.listeningToOtherPerson {
+            return "Listening for their next complete thought…"
+        }
+        if model.isSessionActive {
+            return "Cues are paused while you speak."
+        }
+        return "Choose someone or start listening for a cue."
     }
 }
 

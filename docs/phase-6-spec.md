@@ -20,3 +20,5 @@ No generative model or backend is used. Audio and full transcripts remain epheme
 ## Navigation
 
 The app opens to the simplified **Conversation** tab. The existing latency, speech detection, transcription, route, and tone tests remain available under **Diagnostics**.
+
+Manual speaker changes establish an explicit transcript boundary. Speech labeled **Me** cannot leak into the next **Them** cue, and starting a new **Them** turn clears the previous cue while the app listens. The cue debounce is short because voice activity detection already gates generation at the end of a thought.

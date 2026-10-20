@@ -20,7 +20,12 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var cueSpeechStartMilliseconds: Double?
     @Published var speaksCues = true
     @Published var inputPreference: AudioInputPreference = .iPhone
-    @Published var listeningToOtherPerson = true
+    @Published var listeningToOtherPerson = true {
+        didSet {
+            guard listeningToOtherPerson != oldValue else { return }
+            speakerRoleChanged()
+        }
+    }
     @Published var conversationPartnerName = ""
     @Published var memoryDraft = ""
     @Published private(set) var selectedMemory: ConversationMemory?
@@ -49,7 +54,7 @@ final class LatencyTestViewModel: ObservableObject {
             if let latency = snapshot.onsetLatencyMilliseconds {
                 speechDetectionLatencies.append(latency)
                 pendingSpeechOnsetNanoseconds = DispatchTime.now().uptimeNanoseconds
-                needsCueForCurrentUtterance = true
+                needsCueForCurrentUtterance = listeningToOtherPerson
             }
 
             if wasSpeechActive && !snapshot.isSpeechActive {
@@ -201,6 +206,16 @@ final class LatencyTestViewModel: ObservableObject {
         conversationPartnerName = ""
         memoryDraft = ""
         memoryStatusMessage = "Memory removed from this iPhone."
+    }
+
+    private func speakerRoleChanged() {
+        pendingSpeechOnsetNanoseconds = nil
+        needsCueForCurrentUtterance = false
+        cueEngine.beginTurn(at: transcript)
+
+        if listeningToOtherPerson, isSessionActive {
+            latestCue = nil
+        }
     }
 
     private func startSession() {

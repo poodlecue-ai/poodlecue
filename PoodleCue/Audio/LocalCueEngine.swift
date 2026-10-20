@@ -7,7 +7,9 @@ struct LocalConversationCue: Equatable {
 }
 
 final class LocalCueEngine {
-    private let minimumIntervalNanoseconds: UInt64 = 4_000_000_000
+    // Cues are already gated by end-of-turn speech detection. Keep only a
+    // short debounce so a natural, quick reply is not silently discarded.
+    private let minimumIntervalNanoseconds: UInt64 = 750_000_000
     private var lastIssuedAtNanoseconds: UInt64 = 0
     private var lastTranscript = ""
     private var lastCue = ""
@@ -64,6 +66,10 @@ final class LocalCueEngine {
         lastIssuedAtNanoseconds = 0
         lastTranscript = ""
         lastCue = ""
+    }
+
+    func beginTurn(at fullTranscript: String) {
+        lastTranscript = fullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func followUpCue(personName: String, summary: String) -> LocalConversationCue {

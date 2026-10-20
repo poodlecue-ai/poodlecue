@@ -1,10 +1,21 @@
 import http from "node:http";
-import { buildOpenAIRequest, extractOutputText, normalizeCue, sanitizePayload } from "./cue.mjs";
+import crypto from "node:crypto";
+import {
+  buildOpenAIRequest,
+  buildRealtimeClientSecretRequest,
+  extractOutputText,
+  normalizeCue,
+  sanitizePayload,
+} from "./cue.mjs";
 
 const port = Number(process.env.PORT || 3000);
 const model = process.env.OPENAI_MODEL || "gpt-6-luna";
+const realtimeModel = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1";
 const apiKey = process.env.OPENAI_API_KEY;
 const appToken = process.env.POODLECUE_APP_TOKEN;
+const safetyIdentifier = appToken
+  ? crypto.createHash("sha256").update(`poodlecue:${appToken}`).digest("hex")
+  : undefined;
 
 function send(response, status, body) {
   response.writeHead(status, {
@@ -30,13 +41,47 @@ const server = http.createServer(async (request, response) => {
     return send(response, 200, { ok: true });
   }
 
-  if (request.method !== "POST" || request.url !== "/v1/cue-shadow") {
+  const isCueRequest = request.method === "POST" && request.url === "/v1/cue-shadow";
+  const isRealtimeTokenRequest = request.method === "POST" && request.url === "/v1/realtime-token";
+
+  if (!isCueRequest && !isRealtimeTokenRequest) {
     return send(response, 404, { error: "not found" });
   }
 
   if (!apiKey || !appToken) return send(response, 503, { error: "service is not configured" });
   if (request.headers.authorization !== `Bearer ${appToken}`) {
     return send(response, 401, { error: "unauthorized" });
+  }
+
+  if (isRealtimeTokenRequest) {
+    try {
+      const upstream = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+          "openai-safety-identifier": safetyIdentifier,
+        },
+        body: JSON.stringify(buildRealtimeClientSecretRequest(realtimeModel)),
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!upstream.ok) {
+        const requestId = upstream.headers.get("x-request-id") ?? undefined;
+        console.error("Realtime credential request failed", { status: upstream.status, requestId });
+        return send(response, 502, { error: "realtime connection unavailable" });
+      }
+
+      const credential = await upstream.json();
+      return send(response, 200, {
+        value: credential.value,
+        expires_at: credential.expires_at,
+        model: realtimeModel,
+      });
+    } catch (error) {
+      console.error("Realtime credential request failed", { name: error?.name, message: error?.message });
+      return send(response, 504, { error: "realtime connection timed out" });
+    }
   }
 
   try {

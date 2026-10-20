@@ -41,6 +41,7 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var conversationTurns: [ConversationTurn] = []
     @Published private(set) var latestCueFeedback: CueFeedback?
     @Published private(set) var aiShadowState: AIShadowState = .unavailable
+    @Published private(set) var aiTransportLabel = "Not connected"
     @Published private(set) var aiComparisonChoice: String?
     @Published private(set) var localShadowBaseline: String?
     @Published var speaksCues = true
@@ -63,6 +64,7 @@ final class LatencyTestViewModel: ObservableObject {
     private let cueEngine = LocalCueEngine()
     private let cueSpeaker = CueSpeaker()
     private let aiShadowClient = AIShadowClient()
+    private let aiRealtimeClient = AIRealtimeClient()
     let memoryStore = ConversationMemoryStore()
     private var pendingSpeechOnsetNanoseconds: UInt64?
     private var needsCueForCurrentUtterance = false
@@ -157,6 +159,26 @@ final class LatencyTestViewModel: ObservableObject {
 
     var aiEvaluationP95Latency: Double? {
         percentile(0.95, values: savedAIEvaluationLatencies)
+    }
+
+    var aiRealtimeRequestCount: Int {
+        UserDefaults.standard.integer(forKey: "aiRealtime.requests")
+    }
+
+    var aiRealtimeFallbackCount: Int {
+        UserDefaults.standard.integer(forKey: "aiRealtime.fallbacks")
+    }
+
+    var aiRealtimeFailureCount: Int {
+        UserDefaults.standard.integer(forKey: "aiRealtime.failures")
+    }
+
+    var aiRealtimeMedianLatency: Double? {
+        percentile(0.50, values: savedAIRealtimeLatencies)
+    }
+
+    var aiRealtimeP95Latency: Double? {
+        percentile(0.95, values: savedAIRealtimeLatencies)
     }
 
     var latestLatency: Double? {
@@ -390,6 +412,7 @@ final class LatencyTestViewModel: ObservableObject {
                 transcriptionLocale = try transcriber.start()
                 try cuePlayer.prepare()
                 isSessionActive = true
+                warmRealtimeConnection()
                 if let selectedMemory {
                     let cue = cueEngine.followUpCue(
                         personName: selectedMemory.personName,
@@ -414,6 +437,8 @@ final class LatencyTestViewModel: ObservableObject {
     private func stopSession() {
         aiShadowTask?.cancel()
         transcriptPauseTask?.cancel()
+        aiRealtimeClient.disconnect()
+        aiTransportLabel = "Not connected"
         cueSpeaker.stop()
         transcriber.stop()
         cuePlayer.stop()
@@ -458,7 +483,7 @@ final class LatencyTestViewModel: ObservableObject {
     private func scheduleTranscriptPauseFallback(for transcriptSnapshot: String) {
         transcriptPauseTask?.cancel()
         transcriptPauseTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(1_200))
+            try? await Task.sleep(for: .milliseconds(900))
             guard !Task.isCancelled, let self else { return }
             guard transcript == transcriptSnapshot, !isSpeechActive else { return }
             finishCurrentTranscriptTurn()
@@ -525,7 +550,24 @@ final class LatencyTestViewModel: ObservableObject {
         aiShadowTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await aiShadowClient.compare(payload)
+                let result: AIShadowCue
+                if aiRealtimeClient.isConfigured {
+                    do {
+                        result = try await aiRealtimeClient.compare(payload)
+                        aiTransportLabel = "Realtime"
+                        recordRealtimeSuccess(result)
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        incrementEvaluationCount(forKey: "aiRealtime.failures")
+                        incrementEvaluationCount(forKey: "aiRealtime.fallbacks")
+                        aiTransportLabel = "HTTP fallback"
+                        result = try await aiShadowClient.compare(payload)
+                    }
+                } else {
+                    aiTransportLabel = "HTTP"
+                    result = try await aiShadowClient.compare(payload)
+                }
                 guard !Task.isCancelled else { return }
                 recordAIShadowResult(result)
                 aiShadowState = .ready(result)
@@ -537,6 +579,32 @@ final class LatencyTestViewModel: ObservableObject {
                 aiShadowState = .failed("AI comparison unavailable; your local cue was unaffected.")
             }
         }
+    }
+
+    private func warmRealtimeConnection() {
+        guard aiRealtimeClient.isConfigured else {
+            aiTransportLabel = "HTTP"
+            return
+        }
+        aiTransportLabel = "Warming…"
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await aiRealtimeClient.connect()
+                guard isSessionActive else { return }
+                aiTransportLabel = "Realtime ready"
+            } catch {
+                guard isSessionActive else { return }
+                aiTransportLabel = "HTTP fallback"
+            }
+        }
+    }
+
+    private func recordRealtimeSuccess(_ result: AIShadowCue) {
+        incrementEvaluationCount(forKey: "aiRealtime.requests")
+        var latencies = savedAIRealtimeLatencies
+        latencies.append(result.latencyMilliseconds)
+        UserDefaults.standard.set(Array(latencies.suffix(200)), forKey: "aiRealtime.latencies")
     }
 
     private func recordAIShadowResult(_ result: AIShadowCue) {
@@ -556,6 +624,12 @@ final class LatencyTestViewModel: ObservableObject {
 
     private var savedAIEvaluationLatencies: [Double] {
         (UserDefaults.standard.array(forKey: "aiEvaluation.latencies") ?? []).compactMap {
+            ($0 as? NSNumber)?.doubleValue
+        }
+    }
+
+    private var savedAIRealtimeLatencies: [Double] {
+        (UserDefaults.standard.array(forKey: "aiRealtime.latencies") ?? []).compactMap {
             ($0 as? NSNumber)?.doubleValue
         }
     }

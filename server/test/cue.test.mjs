@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildOpenAIRequest, extractOutputText, normalizeCue, sanitizePayload } from "../src/cue.mjs";
+import {
+  buildOpenAIRequest,
+  buildRealtimeClientSecretRequest,
+  extractOutputText,
+  normalizeCue,
+  sanitizePayload,
+} from "../src/cue.mjs";
 
 test("sanitizes a compact conversation payload", () => {
   const value = sanitizePayload({
@@ -37,4 +43,13 @@ test("clears a cue when the model chooses silence", () => {
   const cue = normalizeCue({ should_speak: false, cue: "Do not show", confidence: 0.8 }, 10);
   assert.equal(cue.cue, "");
   assert.equal(cue.should_speak, false);
+});
+
+test("builds a short-lived text-only realtime session", () => {
+  const body = buildRealtimeClientSecretRequest("gpt-realtime-2.1");
+  assert.equal(body.session.type, "realtime");
+  assert.equal(body.session.model, "gpt-realtime-2.1");
+  assert.deepEqual(body.session.output_modalities, ["text"]);
+  assert.equal(body.expires_after.seconds, 600);
+  assert.equal(body.session.instructions.includes("Return only one compact JSON object"), true);
 });

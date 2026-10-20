@@ -257,7 +257,7 @@ struct ConversationView: View {
                 Label("AI shadow", systemImage: "eye.slash")
                     .font(.headline)
                 Spacer()
-                Text("Never spoken")
+                Text("Never spoken · \(model.aiTransportLabel)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -376,6 +376,36 @@ struct ConversationView: View {
             }
 
             Text("\(model.aiEvaluationRequestCount) AI comparisons completed. Test a mix of positive, difficult, work, family, fitness, travel, question, and low-signal turns.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Divider()
+
+            HStack {
+                Text("Phase 9 realtime")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text("\(model.aiRealtimeRequestCount) turns")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 8) {
+                evaluationMetric(
+                    label: "Median",
+                    value: formattedEvaluationLatency(model.aiRealtimeMedianLatency)
+                )
+                evaluationMetric(
+                    label: "p95",
+                    value: formattedEvaluationLatency(model.aiRealtimeP95Latency)
+                )
+                evaluationMetric(
+                    label: "Fallback / failed",
+                    value: "\(model.aiRealtimeFallbackCount) / \(model.aiRealtimeFailureCount)"
+                )
+            }
+
+            Text("Goal: median below 1,000 ms, p95 below 1,500 ms, and fewer than 5% fallbacks.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

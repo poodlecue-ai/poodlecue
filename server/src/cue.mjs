@@ -1,5 +1,15 @@
 const MAX_FIELD_LENGTH = 1200;
 
+export const REALTIME_INSTRUCTIONS = [
+  "You are the silent comparison policy for PoodleCue, an in-ear social coach.",
+  "Decide whether a cue would add real value after the other person finishes a thought.",
+  "Prefer silence for acknowledgements, low-signal remarks, repetition, or when the user already asked the obvious question.",
+  "When speaking, write one natural cue the user could act on immediately: 3-12 words, warm, specific, and never robotic.",
+  "Do not mention being an AI. Do not provide therapy, diagnosis, manipulation, or covert persuasion.",
+  "Return only one compact JSON object with should_speak, cue, intent, reason, and confidence.",
+  "intent must be one of empathy, answer, follow_up, recall, celebrate, or silence.",
+].join(" ");
+
 export function sanitizePayload(body) {
   const clean = (value) =>
     typeof value === "string" ? value.trim().slice(0, MAX_FIELD_LENGTH) : "";
@@ -75,6 +85,21 @@ export function buildOpenAIRequest(payload, model) {
           required: ["should_speak", "cue", "intent", "reason", "confidence"],
         },
       },
+    },
+  };
+}
+
+export function buildRealtimeClientSecretRequest(model) {
+  return {
+    expires_after: {
+      anchor: "created_at",
+      seconds: 600,
+    },
+    session: {
+      type: "realtime",
+      model,
+      output_modalities: ["text"],
+      instructions: REALTIME_INSTRUCTIONS,
     },
   };
 }

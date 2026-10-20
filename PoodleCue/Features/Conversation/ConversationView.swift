@@ -18,6 +18,7 @@ struct ConversationView: View {
 
                     if model.isAIShadowConfigured {
                         aiShadowCard
+                        aiEvaluationCard
                     }
 
                     if model.isSessionActive || !model.transcript.isEmpty {
@@ -336,6 +337,78 @@ struct ConversationView: View {
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 
+    private var aiEvaluationCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("AI evaluation", systemImage: "chart.bar.fill")
+                    .font(.headline)
+                Spacer()
+                Text("\(model.aiEvaluationRatedTurns) / 50 rated")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            ProgressView(
+                value: Double(min(model.aiEvaluationRatedTurns, 50)),
+                total: 50
+            )
+            .tint(.purple)
+
+            HStack(spacing: 8) {
+                evaluationMetric(label: "Local", value: "\(model.aiEvaluationLocalWins)")
+                evaluationMetric(label: "AI", value: "\(model.aiEvaluationAIWins)")
+                evaluationMetric(label: "Neither", value: "\(model.aiEvaluationNeitherWins)")
+            }
+
+            HStack(spacing: 8) {
+                evaluationMetric(
+                    label: "Median",
+                    value: formattedEvaluationLatency(model.aiEvaluationMedianLatency)
+                )
+                evaluationMetric(
+                    label: "p95",
+                    value: formattedEvaluationLatency(model.aiEvaluationP95Latency)
+                )
+                evaluationMetric(
+                    label: "Silent / failed",
+                    value: "\(model.aiEvaluationSilenceCount) / \(model.aiEvaluationFailureCount)"
+                )
+            }
+
+            Text("\(model.aiEvaluationRequestCount) AI comparisons completed. Test a mix of positive, difficult, work, family, fitness, travel, question, and low-signal turns.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(model.aiEvaluationRatedTurns < 50
+                 ? "Rate \(50 - model.aiEvaluationRatedTurns) more turns before considering spoken AI."
+                 : "Evaluation gate reached. Review usefulness, latency, silence, and failures before enabling spoken AI.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.purple)
+        }
+        .cardStyle(color: .purple)
+    }
+
+    private func evaluationMetric(label: String, value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, minHeight: 48)
+        .padding(.horizontal, 4)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func formattedEvaluationLatency(_ value: Double?) -> String {
+        guard let value else { return "—" }
+        return "\(Int(value)) ms"
+    }
+
     private var memoryCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Remember for next time", systemImage: "lock.shield")
@@ -378,7 +451,7 @@ struct ConversationView: View {
     private var privacyNote: some View {
         Label(
             model.isAIShadowConfigured
-                ? "Audio and full transcripts are discarded. AI shadow mode sends only the latest text turn and optional reviewed memory for a silent comparison."
+                ? "Audio and full transcripts are discarded. AI shadow mode sends only the latest text turn and optional reviewed memory. Only aggregate choices, latency, silence, and failure counts are saved on this iPhone."
                 : "Audio and full transcripts are discarded. Only a note you review and save remains on this iPhone.",
             systemImage: "hand.raised.fill"
         )

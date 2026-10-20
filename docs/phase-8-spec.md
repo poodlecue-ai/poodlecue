@@ -5,11 +5,13 @@ Phase 8 compares the proven local cue policy with an AI candidate without allowi
 ## Runtime policy
 
 - The local policy remains the only source of spoken cues.
-- After a complete **Them** turn, the app sends only the compact text turn, the previous **Me** turn, an optional user-reviewed memory, recent cue text, and the local candidate.
+- After a complete **Them** turn, the app sends only the compact text turn, the previous **Me** turn, an optional user-reviewed memory, and recent cue text.
+- The AI never sees the local candidate, keeping the comparison independent.
 - Raw audio and the full transcript are never sent.
 - The server uses the OpenAI Responses API with Structured Outputs and `store: false`.
 - The silent AI comparison is cancelled after roughly 8 seconds. A failure never changes the local cue.
 - The AI candidate is displayed silently for side-by-side evaluation.
+- The phone stores only aggregate preference, latency, silence, and failure metrics; no transcript is attached to evaluation data.
 
 ## Privacy boundary
 

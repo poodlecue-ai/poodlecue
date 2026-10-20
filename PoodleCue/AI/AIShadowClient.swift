@@ -31,14 +31,12 @@ struct AIShadowRequest: Encodable {
     let me: String?
     let memory: String?
     let recentCues: [String]
-    let localCue: String?
 
     enum CodingKeys: String, CodingKey {
         case them
         case me
         case memory
         case recentCues = "recent_cues"
-        case localCue = "local_cue"
     }
 }
 

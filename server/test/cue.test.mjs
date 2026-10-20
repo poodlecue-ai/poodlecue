@@ -13,10 +13,15 @@ test("sanitizes a compact conversation payload", () => {
 });
 
 test("builds a stateless structured OpenAI request", () => {
-  const body = buildOpenAIRequest(sanitizePayload({ them: "I started a new role" }), "gpt-6-luna");
+  const body = buildOpenAIRequest(
+    sanitizePayload({ them: "I started a new role", local_cue: "Celebrate that" }),
+    "gpt-6-luna",
+  );
   assert.equal(body.store, false);
   assert.equal(body.text.format.strict, true);
   assert.equal(body.model, "gpt-6-luna");
+  assert.equal(body.input[1].content[0].text.includes("local_candidate"), false);
+  assert.equal(body.input[1].content[0].text.includes("Celebrate that"), false);
 });
 
 test("extracts and normalizes the structured cue", () => {

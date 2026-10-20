@@ -121,6 +121,42 @@ final class LatencyTestViewModel: ObservableObject {
         aiShadowClient.isConfigured
     }
 
+    var aiEvaluationLocalWins: Int {
+        UserDefaults.standard.integer(forKey: "aiEvaluation.choice.Local")
+    }
+
+    var aiEvaluationAIWins: Int {
+        UserDefaults.standard.integer(forKey: "aiEvaluation.choice.AI")
+    }
+
+    var aiEvaluationNeitherWins: Int {
+        UserDefaults.standard.integer(forKey: "aiEvaluation.choice.Neither")
+    }
+
+    var aiEvaluationRatedTurns: Int {
+        aiEvaluationLocalWins + aiEvaluationAIWins + aiEvaluationNeitherWins
+    }
+
+    var aiEvaluationRequestCount: Int {
+        UserDefaults.standard.integer(forKey: "aiEvaluation.requests")
+    }
+
+    var aiEvaluationSilenceCount: Int {
+        UserDefaults.standard.integer(forKey: "aiEvaluation.silences")
+    }
+
+    var aiEvaluationFailureCount: Int {
+        UserDefaults.standard.integer(forKey: "aiEvaluation.failures")
+    }
+
+    var aiEvaluationMedianLatency: Double? {
+        percentile(0.50, values: savedAIEvaluationLatencies)
+    }
+
+    var aiEvaluationP95Latency: Double? {
+        percentile(0.95, values: savedAIEvaluationLatencies)
+    }
+
     var latestLatency: Double? {
         latestMeasurement?.milliseconds
     }
@@ -208,13 +244,13 @@ final class LatencyTestViewModel: ObservableObject {
               aiComparisonChoice != choice else { return }
 
         if let previousChoice = aiComparisonChoice {
-            let previousKey = "aiComparison.\(previousChoice)"
+            let previousKey = "aiEvaluation.choice.\(previousChoice)"
             let previousTotal = UserDefaults.standard.integer(forKey: previousKey)
             UserDefaults.standard.set(max(0, previousTotal - 1), forKey: previousKey)
         }
 
         aiComparisonChoice = choice
-        let key = "aiComparison.\(choice)"
+        let key = "aiEvaluation.choice.\(choice)"
         UserDefaults.standard.set(UserDefaults.standard.integer(forKey: key) + 1, forKey: key)
     }
 
@@ -456,6 +492,7 @@ final class LatencyTestViewModel: ObservableObject {
 
         appendTurn(speaker: .them, text: themText)
         roleStartTranscript = transcript
+        let priorCueTexts = recentCueTexts
 
         if let cue {
             cueCount += 1
@@ -468,17 +505,16 @@ final class LatencyTestViewModel: ObservableObject {
             }
         }
 
-        requestAIShadowCue(themText: themText, localCue: cue?.text)
+        requestAIShadowCue(themText: themText, recentCues: priorCueTexts)
     }
 
-    private func requestAIShadowCue(themText: String, localCue: String?) {
+    private func requestAIShadowCue(themText: String, recentCues: [String]) {
         guard aiShadowClient.isConfigured else { return }
         let payload = AIShadowRequest(
             them: themText,
             me: previousUserTurn,
             memory: selectedMemory?.summary,
-            recentCues: recentCueTexts,
-            localCue: localCue
+            recentCues: recentCues
         )
 
         aiShadowTask?.cancel()
@@ -489,13 +525,36 @@ final class LatencyTestViewModel: ObservableObject {
             do {
                 let result = try await aiShadowClient.compare(payload)
                 guard !Task.isCancelled else { return }
+                recordAIShadowResult(result)
                 aiShadowState = .ready(result)
             } catch is CancellationError {
                 return
             } catch {
                 guard !Task.isCancelled else { return }
+                incrementEvaluationCount(forKey: "aiEvaluation.failures")
                 aiShadowState = .failed("AI comparison unavailable; your local cue was unaffected.")
             }
+        }
+    }
+
+    private func recordAIShadowResult(_ result: AIShadowCue) {
+        incrementEvaluationCount(forKey: "aiEvaluation.requests")
+        if !result.shouldSpeak {
+            incrementEvaluationCount(forKey: "aiEvaluation.silences")
+        }
+
+        var latencies = savedAIEvaluationLatencies
+        latencies.append(result.latencyMilliseconds)
+        UserDefaults.standard.set(Array(latencies.suffix(200)), forKey: "aiEvaluation.latencies")
+    }
+
+    private func incrementEvaluationCount(forKey key: String) {
+        UserDefaults.standard.set(UserDefaults.standard.integer(forKey: key) + 1, forKey: key)
+    }
+
+    private var savedAIEvaluationLatencies: [Double] {
+        (UserDefaults.standard.array(forKey: "aiEvaluation.latencies") ?? []).compactMap {
+            ($0 as? NSNumber)?.doubleValue
         }
     }
 

@@ -11,7 +11,6 @@ export function sanitizePayload(body) {
     them,
     me: clean(body?.me),
     memory: clean(body?.memory),
-    localCue: clean(body?.local_cue),
     recentCues: Array.isArray(body?.recent_cues)
       ? body.recent_cues.slice(-5).map(clean).filter(Boolean)
       : [],
@@ -50,7 +49,6 @@ export function buildOpenAIRequest(payload, model) {
               users_previous_turn: payload.me || null,
               reviewed_memory: payload.memory || null,
               recent_cues: payload.recentCues,
-              local_candidate: payload.localCue || null,
             }),
           },
         ],

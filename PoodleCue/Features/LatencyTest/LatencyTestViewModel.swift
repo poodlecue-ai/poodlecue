@@ -75,6 +75,7 @@ final class LatencyTestViewModel: ObservableObject {
     private var recentCueTexts: [String] = []
     private var aiShadowTask: Task<Void, Never>?
     private var transcriptPauseTask: Task<Void, Never>?
+    private var turnDeadlineArmed = false
     private var currentTurnEndedAtNanoseconds: UInt64?
     private var pendingCueSpeechFromNanoseconds: UInt64?
 
@@ -93,6 +94,9 @@ final class LatencyTestViewModel: ObservableObject {
             isSpeechActive = snapshot.isSpeechActive
 
             if let latency = snapshot.onsetLatencyMilliseconds {
+                transcriptPauseTask?.cancel()
+                turnDeadlineArmed = false
+                currentTurnEndedAtNanoseconds = nil
                 speechDetectionLatencies.append(latency)
                 pendingSpeechOnsetNanoseconds = DispatchTime.now().uptimeNanoseconds
                 needsCueForCurrentUtterance = listeningToOtherPerson
@@ -106,7 +110,7 @@ final class LatencyTestViewModel: ObservableObject {
 
                 // Give on-device recognition a short window for the final words.
                 // A later transcript update restarts this countdown.
-                scheduleTranscriptPauseFallback(for: transcript)
+                scheduleTranscriptPauseFallback(for: transcript, fixedDeadline: true)
             }
         }
         cuePlayer.onAudioBuffer = { [weak self] buffer in
@@ -377,6 +381,7 @@ final class LatencyTestViewModel: ObservableObject {
             captureUserTurn()
         }
         pendingSpeechOnsetNanoseconds = nil
+        turnDeadlineArmed = false
         currentTurnEndedAtNanoseconds = nil
         pendingCueSpeechFromNanoseconds = nil
         needsCueForCurrentUtterance = false
@@ -408,6 +413,7 @@ final class LatencyTestViewModel: ObservableObject {
         transcriptionLocale = ""
         isTranscriptFinal = false
         pendingSpeechOnsetNanoseconds = nil
+        turnDeadlineArmed = false
         currentTurnEndedAtNanoseconds = nil
         pendingCueSpeechFromNanoseconds = nil
         needsCueForCurrentUtterance = false
@@ -473,6 +479,7 @@ final class LatencyTestViewModel: ObservableObject {
         microphoneLevelDBFS = -80
         isSpeechActive = false
         pendingSpeechOnsetNanoseconds = nil
+        turnDeadlineArmed = false
         currentTurnEndedAtNanoseconds = nil
         pendingCueSpeechFromNanoseconds = nil
         needsCueForCurrentUtterance = false
@@ -501,7 +508,9 @@ final class LatencyTestViewModel: ObservableObject {
                 // Transcript activity therefore also arms cue generation.
                 needsCueForCurrentUtterance = true
             }
-            scheduleTranscriptPauseFallback(for: text)
+            if !turnDeadlineArmed {
+                scheduleTranscriptPauseFallback(for: text)
+            }
         }
 
         if !isSpeechActive {
@@ -511,18 +520,26 @@ final class LatencyTestViewModel: ObservableObject {
         }
     }
 
-    private func scheduleTranscriptPauseFallback(for transcriptSnapshot: String) {
+    private func scheduleTranscriptPauseFallback(
+        for transcriptSnapshot: String,
+        fixedDeadline: Bool = false
+    ) {
         transcriptPauseTask?.cancel()
+        turnDeadlineArmed = fixedDeadline
         transcriptPauseTask = Task { [weak self] in
             try? await Task.sleep(for: Self.transcriptStabilityDelay)
             guard !Task.isCancelled, let self else { return }
-            guard transcript == transcriptSnapshot, !isSpeechActive else { return }
+            guard !isSpeechActive else { return }
+            if !fixedDeadline {
+                guard transcript == transcriptSnapshot else { return }
+            }
             finishCurrentTranscriptTurn()
         }
     }
 
     private func finishCurrentTranscriptTurn() {
         transcriptPauseTask?.cancel()
+        turnDeadlineArmed = false
         if listeningToOtherPerson {
             createCueIfReady()
         } else {

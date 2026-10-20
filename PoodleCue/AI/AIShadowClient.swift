@@ -119,9 +119,9 @@ final class AIRealtimeClient {
         "# GROUNDING: Use only facts in the supplied JSON. 'them' is the other person's exact completed thought. Do not invent or change the subject.",
         "# DEFAULT: Prefer a curious follow-up about the exact experience, feeling, reason, or obstacle they mentioned—not advice or a solution.",
         "# PROHIBITED: Do not recommend an app, tracker, product, schedule, habit, task, or solution unless the other person explicitly mentioned it or asked for advice.",
-        "# CUE FORM: 3-12 words. Begin with Ask, Acknowledge, Celebrate, Answer, or Recall. The cue tells the user what conversational action to take.",
+        "# CUE FORM: Speak the exact words the user can say next: one crisp clause of 2-8 words. Never begin with Ask, Acknowledge, Celebrate, Answer, Recall, Say, or Tell. Use plain spoken wording with no filler or repeated idea.",
         "# SILENCE: Prefer silence for low-signal remarks, repetition, or when the user's previous turn already asked the obvious question. If no directly grounded action exists, return silence.",
-        "# EXAMPLE: them='I am training for a half marathon, but consistency is difficult' -> cue='Ask what usually makes consistency difficult.' Never suggest logging, tracking, or a training plan.",
+        "# EXAMPLE: them='I may change jobs but fear regretting it' -> cue='What might you regret?' Never output 'Ask what they might regret.'",
         "# SAFETY: Do not mention being an AI. Do not provide therapy, diagnosis, manipulation, or covert persuasion.",
         "# OUTPUT: Return exactly one JSON object and no markdown: {\"should_speak\":true|false,\"cue\":\"\",\"intent\":\"empathy|answer|follow_up|recall|celebrate|silence\",\"reason\":\"brief grounding reason\",\"confidence\":0.0}.",
     ].joined(separator: " ")
@@ -271,7 +271,7 @@ final class AIRealtimeClient {
             "response": [
                 "conversation": "none",
                 "output_modalities": ["text"],
-                "max_output_tokens": 100,
+                "max_output_tokens": 80,
                 "reasoning": ["effort": "minimal"],
                 "metadata": ["request_id": requestID],
                 "instructions": Self.responseInstructions,
@@ -388,9 +388,13 @@ final class AIRealtimeClient {
 
     private func isAllowedConversationalCue(_ cue: String) -> Bool {
         let normalized = cue.lowercased()
-        return ["ask ", "acknowledge ", "celebrate ", "answer ", "recall "].contains {
-            normalized.hasPrefix($0)
-        }
+        let words = cue.split(whereSeparator: { $0.isWhitespace })
+        let commandPrefixes = [
+            "ask ", "acknowledge ", "celebrate ", "answer ",
+            "recall ", "say ", "tell ",
+        ]
+        return (2...10).contains(words.count)
+            && !commandPrefixes.contains(where: normalized.hasPrefix)
     }
 }
 

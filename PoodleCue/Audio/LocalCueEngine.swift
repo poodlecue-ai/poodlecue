@@ -1,8 +1,17 @@
 import Foundation
 
+enum ConversationCueIntent: String, Equatable {
+    case empathy = "Empathy"
+    case answer = "Answer"
+    case followUp = "Follow-up"
+    case recall = "Recall"
+    case celebrate = "Celebrate"
+}
+
 struct LocalConversationCue: Equatable {
     let text: String
     let reason: String
+    let intent: ConversationCueIntent
     let generationMilliseconds: Double
 }
 
@@ -16,7 +25,9 @@ final class LocalCueEngine {
 
     func suggest(
         from fullTranscript: String,
-        memorySummary: String? = nil
+        memorySummary: String? = nil,
+        previousUserTurn: String? = nil,
+        recentCueTexts: [String] = []
     ) -> LocalConversationCue? {
         let transcript = fullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !transcript.isEmpty else { return nil }
@@ -40,13 +51,20 @@ final class LocalCueEngine {
         }
 
         let startedAt = DispatchTime.now().uptimeNanoseconds
-        let selection = selectCue(
+        guard let selection = selectCue(
             for: segment.lowercased(),
-            memorySummary: memorySummary?.lowercased()
-        )
+            memorySummary: memorySummary?.lowercased(),
+            previousUserTurn: previousUserTurn?.lowercased()
+        ) else {
+            lastTranscript = transcript
+            return nil
+        }
         let finishedAt = DispatchTime.now().uptimeNanoseconds
 
-        guard selection.text != lastCue else {
+        guard
+            selection.text != lastCue,
+            !recentCueTexts.suffix(3).contains(selection.text)
+        else {
             lastTranscript = transcript
             return nil
         }
@@ -58,6 +76,7 @@ final class LocalCueEngine {
         return LocalConversationCue(
             text: selection.text,
             reason: selection.reason,
+            intent: selection.intent,
             generationMilliseconds: Double(finishedAt - startedAt) / 1_000_000
         )
     }
@@ -92,6 +111,7 @@ final class LocalCueEngine {
         return LocalConversationCue(
             text: cue,
             reason: "Based on your saved memory",
+            intent: .recall,
             generationMilliseconds: Double(
                 DispatchTime.now().uptimeNanoseconds - startedAt
             ) / 1_000_000
@@ -100,40 +120,87 @@ final class LocalCueEngine {
 
     private func selectCue(
         for text: String,
-        memorySummary: String?
-    ) -> (text: String, reason: String) {
+        memorySummary: String?,
+        previousUserTurn: String?
+    ) -> (text: String, reason: String, intent: ConversationCueIntent)? {
+        let wordCount = text.split(whereSeparator: \.isWhitespace).count
+        guard wordCount >= 3 else { return nil }
+
+        if containsAny(text, [
+            "didn't sleep", "didn’t sleep", "did not sleep", "not well", "unwell", "sick",
+            "difficult", "hard time", "stressed", "worried", "bad day", "tired"
+        ]) {
+            if containsAny(text, ["kid", "child", "daughter", "son", "family"]) {
+                return (
+                    "Ask if everyone is doing okay today.",
+                    "Responds with empathy to a family difficulty",
+                    .empathy
+                )
+            }
+            return (
+                "Acknowledge that, then ask how they’re doing.",
+                "Responds with empathy to a difficult experience",
+                .empathy
+            )
+        }
+
+        if containsAny(text, ["excited", "great news", "good news", "proud", "happy", "amazing"]) {
+            return (
+                "Celebrate that, then ask what happens next.",
+                "Responds to positive emotion",
+                .celebrate
+            )
+        }
+
+        if containsAny(text, ["what do you", "how do you", "where do you", "have you", "did you", "are you", "can you"]) {
+            return (
+                "Answer simply, then ask them back.",
+                "Detected a question directed at you",
+                .answer
+            )
+        }
+
         if let memorySummary, sharesTopic(text, memorySummary) {
             return (
                 "Ask what’s changed since last time.",
-                "Connected this detail to your saved memory"
+                "Connected this detail to your saved memory",
+                .recall
             )
         }
 
         if containsAny(text, ["gym", "workout", "training", "exercise", "running", "run "]) {
-            return ("Ask what they’re training for.", "Picked up a fitness detail")
+            guard !alreadyAsked(about: ["train", "workout", "run", "marathon"], in: previousUserTurn) else {
+                return nil
+            }
+            return ("Ask what they’re training for.", "Picked up a fitness detail", .followUp)
         }
 
         if containsAny(text, ["work", "job", "office", "company", "career", "study", "college"]) {
-            return ("Ask what they like about it.", "Picked up a work or study detail")
+            guard !alreadyAsked(about: ["work", "job", "office", "study", "college"], in: previousUserTurn) else {
+                return nil
+            }
+            return ("Ask what they like about it.", "Picked up a work or study detail", .followUp)
         }
 
         if containsAny(text, ["travel", "trip", "visited", "from ", "moved", "city", "country"]) {
-            return ("Ask what brought them there.", "Picked up a place or travel detail")
+            guard !alreadyAsked(about: ["travel", "trip", "place", "where"], in: previousUserTurn) else {
+                return nil
+            }
+            return ("Ask what brought them there.", "Picked up a place or travel detail", .followUp)
         }
 
         if containsAny(text, ["weekend", "holiday", "tomorrow", "next week", "plan "]) {
-            return ("Ask what they’re looking forward to.", "Picked up a future plan")
+            return ("Ask what they’re looking forward to.", "Picked up a future plan", .followUp)
         }
 
         if containsAny(text, ["friend", "family", "brother", "sister", "partner", "colleague"]) {
-            return ("Ask how they know each other.", "Picked up a relationship detail")
+            return ("Ask a little more about that person.", "Picked up a relationship detail", .followUp)
         }
 
-        if containsAny(text, ["what do you", "how do you", "where do you", "have you", "did you"]) {
-            return ("Answer simply, then ask them back.", "Detected a question")
-        }
-
-        return ("Ask about that last detail.", "Keeps the conversation moving")
+        // The policy deliberately stays silent for short acknowledgements and
+        // low-signal statements instead of producing a generic cue every time.
+        guard wordCount >= 8 else { return nil }
+        return ("Ask about the detail that seemed most important.", "Offers a general follow-up", .followUp)
     }
 
     private func containsAny(_ text: String, _ phrases: [String]) -> Bool {
@@ -150,5 +217,14 @@ final class LocalCueEngine {
         return topicGroups.contains { group in
             containsAny(text, group) && containsAny(memory, group)
         }
+    }
+
+    private func alreadyAsked(about terms: [String], in previousTurn: String?) -> Bool {
+        guard let previousTurn else { return false }
+        let looksLikeQuestion = previousTurn.contains("?") || containsAny(
+            previousTurn,
+            ["what", "why", "how", "where", "when", "which", "do you", "are you"]
+        )
+        return looksLikeQuestion && containsAny(previousTurn, terms)
     }
 }

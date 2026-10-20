@@ -2,6 +2,24 @@ import AVFoundation
 import Foundation
 import Speech
 
+struct ConversationTurn: Identifiable, Equatable {
+    enum Speaker: String {
+        case me = "Me"
+        case them = "Them"
+    }
+
+    let id = UUID()
+    let speaker: Speaker
+    let text: String
+}
+
+enum CueFeedback: String, CaseIterable {
+    case useful = "Useful"
+    case notUseful = "Not useful"
+    case tooLate = "Too late"
+    case repeated = "Repeated"
+}
+
 @MainActor
 final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var isSessionActive = false
@@ -18,12 +36,14 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var latestCue: LocalConversationCue?
     @Published private(set) var cueCount = 0
     @Published private(set) var cueSpeechStartMilliseconds: Double?
+    @Published private(set) var conversationTurns: [ConversationTurn] = []
+    @Published private(set) var latestCueFeedback: CueFeedback?
     @Published var speaksCues = true
     @Published var inputPreference: AudioInputPreference = .iPhone
     @Published var listeningToOtherPerson = true {
         didSet {
             guard listeningToOtherPerson != oldValue else { return }
-            speakerRoleChanged()
+            speakerRoleChanged(from: oldValue)
         }
     }
     @Published var conversationPartnerName = ""
@@ -40,6 +60,9 @@ final class LatencyTestViewModel: ObservableObject {
     let memoryStore = ConversationMemoryStore()
     private var pendingSpeechOnsetNanoseconds: UInt64?
     private var needsCueForCurrentUtterance = false
+    private var roleStartTranscript = ""
+    private var previousUserTurn: String?
+    private var recentCueTexts: [String] = []
 
     init() {
         cuePlayer.onMeasurement = { [weak self] measurement in
@@ -58,7 +81,11 @@ final class LatencyTestViewModel: ObservableObject {
             }
 
             if wasSpeechActive && !snapshot.isSpeechActive {
-                createCueIfReady()
+                if listeningToOtherPerson {
+                    createCueIfReady()
+                } else {
+                    captureUserTurn()
+                }
             }
         }
         cuePlayer.onAudioBuffer = { [weak self] buffer in
@@ -157,6 +184,14 @@ final class LatencyTestViewModel: ObservableObject {
         cueSpeaker.speak(latestCue.text)
     }
 
+    func recordCueFeedback(_ feedback: CueFeedback) {
+        guard latestCue != nil else { return }
+        latestCueFeedback = feedback
+        let key = "cueFeedback.\(feedback.rawValue)"
+        let total = UserDefaults.standard.integer(forKey: key) + 1
+        UserDefaults.standard.set(total, forKey: key)
+    }
+
     func selectMemory(_ memory: ConversationMemory) {
         selectedMemory = memory
         conversationPartnerName = memory.personName
@@ -165,6 +200,7 @@ final class LatencyTestViewModel: ObservableObject {
             personName: memory.personName,
             summary: memory.summary
         )
+        latestCueFeedback = nil
         memoryStatusMessage = "Ready with context from your last conversation."
     }
 
@@ -174,6 +210,7 @@ final class LatencyTestViewModel: ObservableObject {
         conversationPartnerName = ""
         memoryDraft = ""
         latestCue = nil
+        latestCueFeedback = nil
         memoryStatusMessage = nil
     }
 
@@ -208,14 +245,27 @@ final class LatencyTestViewModel: ObservableObject {
         memoryStatusMessage = "Memory removed from this iPhone."
     }
 
-    private func speakerRoleChanged() {
+    private func speakerRoleChanged(from previousRoleWasOther: Bool) {
+        if !previousRoleWasOther {
+            captureUserTurn()
+        }
         pendingSpeechOnsetNanoseconds = nil
         needsCueForCurrentUtterance = false
         cueEngine.beginTurn(at: transcript)
+        roleStartTranscript = transcript
 
         if listeningToOtherPerson, isSessionActive {
             latestCue = nil
+            latestCueFeedback = nil
         }
+    }
+
+    private func captureUserTurn() {
+        let text = transcriptDelta(since: roleStartTranscript)
+        guard !text.isEmpty else { return }
+        previousUserTurn = text
+        appendTurn(speaker: .me, text: text)
+        roleStartTranscript = transcript
     }
 
     private func startSession() {
@@ -232,6 +282,11 @@ final class LatencyTestViewModel: ObservableObject {
         latestCue = nil
         cueCount = 0
         cueSpeechStartMilliseconds = nil
+        conversationTurns = []
+        latestCueFeedback = nil
+        roleStartTranscript = ""
+        previousUserTurn = nil
+        recentCueTexts = []
         cueEngine.reset()
         cueSpeaker.stop()
         microphoneLevelDBFS = -80
@@ -263,6 +318,7 @@ final class LatencyTestViewModel: ObservableObject {
                     )
                     latestCue = cue
                     cueCount = 1
+                    recentCueTexts.append(cue.text)
                     if speaksCues {
                         cueSpeaker.speak(cue.text)
                     }
@@ -311,18 +367,45 @@ final class LatencyTestViewModel: ObservableObject {
             needsCueForCurrentUtterance,
             let cue = cueEngine.suggest(
                 from: transcript,
-                memorySummary: selectedMemory?.summary
+                memorySummary: selectedMemory?.summary,
+                previousUserTurn: previousUserTurn,
+                recentCueTexts: recentCueTexts
             )
         else { return }
 
         latestCue = cue
+        latestCueFeedback = nil
         cueCount += 1
         cueSpeechStartMilliseconds = nil
         needsCueForCurrentUtterance = false
+        recentCueTexts.append(cue.text)
+        recentCueTexts = Array(recentCueTexts.suffix(5))
+
+        let themText = transcriptDelta(since: roleStartTranscript)
+        if !themText.isEmpty {
+            appendTurn(speaker: .them, text: themText)
+            roleStartTranscript = transcript
+        }
 
         if speaksCues {
             cueSpeaker.speak(cue.text)
         }
+    }
+
+    private func appendTurn(speaker: ConversationTurn.Speaker, text: String) {
+        guard conversationTurns.last?.text != text else { return }
+        conversationTurns.append(ConversationTurn(speaker: speaker, text: text))
+        conversationTurns = Array(conversationTurns.suffix(12))
+    }
+
+    private func transcriptDelta(since baseline: String) -> String {
+        let text: String
+        if transcript.hasPrefix(baseline) {
+            text = String(transcript.dropFirst(baseline.count))
+        } else {
+            text = transcript
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func requestSpeechRecognitionPermission() async -> Bool {

@@ -177,6 +177,11 @@ struct ConversationView: View {
 
             if let cue = model.latestCue {
                 HStack {
+                    Text(cue.intent.rawValue)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.12), in: Capsule())
                     Text(cue.reason)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -185,6 +190,39 @@ struct ConversationView: View {
                         model.replayLatestCue()
                     }
                     .font(.footnote)
+                }
+
+                Divider()
+
+                HStack(spacing: 10) {
+                    Text(model.latestCueFeedback.map { "Recorded: \($0.rawValue)" } ?? "Was this useful?")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        model.recordCueFeedback(.useful)
+                    } label: {
+                        Image(systemName: "hand.thumbsup")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        model.recordCueFeedback(.notUseful)
+                    } label: {
+                        Image(systemName: "hand.thumbsdown")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Menu {
+                        Button("Too late") {
+                            model.recordCueFeedback(.tooLate)
+                        }
+                        Button("Repeated") {
+                            model.recordCueFeedback(.repeated)
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
             }
         }

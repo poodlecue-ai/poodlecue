@@ -47,3 +47,5 @@ See [`docs/phase-5-spec.md`](docs/phase-5-spec.md) for private conversation memo
 
 See [`docs/phase-6-spec.md`](docs/phase-6-spec.md) for the everyday conversation screen and memory-aware cues.
 
+See [`docs/phase-7-spec.md`](docs/phase-7-spec.md) for the contextual local cue policy and usefulness feedback.
+

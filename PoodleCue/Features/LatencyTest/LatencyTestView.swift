@@ -8,8 +8,9 @@ struct LatencyTestView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     sessionCard
+                    speechActivityCard
                     cueButton
-                    metrics
+                    cueMetrics
 
                     if let errorMessage = model.errorMessage {
                         Text(errorMessage)
@@ -23,6 +24,54 @@ struct LatencyTestView: View {
             }
             .navigationTitle("PoodleCue")
         }
+    }
+
+    private var speechActivityCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("Live speech detection", systemImage: "waveform")
+                    .font(.headline)
+                Spacer()
+                Text(model.isSpeechActive ? "Speaking" : "Quiet")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(model.isSpeechActive ? .green : .secondary)
+            }
+
+            ProgressView(value: model.normalizedMicrophoneLevel)
+                .tint(model.isSpeechActive ? .green : .accentColor)
+
+            HStack {
+                Text("\(model.microphoneLevelDBFS, specifier: "%.1f") dBFS")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("Speech events: \(model.speechDetectionLatencies.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 12) {
+                metric(label: "Latest", value: model.speechDetectionLatest)
+                metric(label: "Median", value: model.speechDetectionMedian)
+                metric(label: "p95", value: model.speechDetectionP95)
+            }
+
+            HStack {
+                Text("Speak, pause briefly, then speak again to create another event.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Reset") {
+                    model.resetSpeechMeasurements()
+                }
+                .font(.footnote)
+                .disabled(model.speechDetectionLatencies.isEmpty)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .opacity(model.isSessionActive ? 1 : 0.55)
     }
 
     private var sessionCard: some View {
@@ -69,7 +118,7 @@ struct LatencyTestView: View {
         .accessibilityHint("Plays the cached latency-test cue")
     }
 
-    private var metrics: some View {
+    private var cueMetrics: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
                 metric(label: "Latest", value: model.latestLatency)
@@ -110,7 +159,7 @@ struct LatencyTestView: View {
     }
 
     private var measurementNote: some View {
-        Text("This estimates trigger-to-output onset using render timing and the audio engine's reported presentation latency. Physical acoustic latency still requires an external test.")
+        Text("Microphone samples are analyzed live and discarded—this build does not save or transmit audio. Detection latency is estimated from the audio buffer timestamp. Cue timing still requires an external acoustic test for final validation.")
             .font(.footnote)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)

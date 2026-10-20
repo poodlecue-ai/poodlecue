@@ -6,6 +6,9 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var isSessionActive = false
     @Published private(set) var route = AudioRouteDescription.unavailable
     @Published private(set) var measurements: [CueLatencyMeasurement] = []
+    @Published private(set) var microphoneLevelDBFS = -80.0
+    @Published private(set) var isSpeechActive = false
+    @Published private(set) var speechDetectionLatencies: [Double] = []
     @Published var errorMessage: String?
 
     private let audioSession = AudioSessionManager()
@@ -14,6 +17,15 @@ final class LatencyTestViewModel: ObservableObject {
     init() {
         cuePlayer.onMeasurement = { [weak self] measurement in
             self?.measurements.append(measurement)
+        }
+        cuePlayer.onSpeechActivity = { [weak self] snapshot in
+            guard let self else { return }
+            microphoneLevelDBFS = snapshot.levelDBFS
+            isSpeechActive = snapshot.isSpeechActive
+
+            if let latency = snapshot.onsetLatencyMilliseconds {
+                speechDetectionLatencies.append(latency)
+            }
         }
     }
 
@@ -38,6 +50,22 @@ final class LatencyTestViewModel: ObservableObject {
         return p95Latency < 200
     }
 
+    var speechDetectionLatest: Double? {
+        speechDetectionLatencies.last
+    }
+
+    var speechDetectionMedian: Double? {
+        percentile(0.50, values: speechDetectionLatencies)
+    }
+
+    var speechDetectionP95: Double? {
+        percentile(0.95, values: speechDetectionLatencies)
+    }
+
+    var normalizedMicrophoneLevel: Double {
+        min(max((microphoneLevelDBFS + 60) / 60, 0), 1)
+    }
+
     func toggleSession() {
         isSessionActive ? stopSession() : startSession()
     }
@@ -49,6 +77,10 @@ final class LatencyTestViewModel: ObservableObject {
 
     func resetMeasurements() {
         measurements.removeAll()
+    }
+
+    func resetSpeechMeasurements() {
+        speechDetectionLatencies.removeAll()
     }
 
     private func startSession() {
@@ -77,11 +109,17 @@ final class LatencyTestViewModel: ObservableObject {
         cuePlayer.stop()
         audioSession.deactivate()
         route = .unavailable
+        microphoneLevelDBFS = -80
+        isSpeechActive = false
         isSessionActive = false
     }
 
     private func percentile(_ fraction: Double) -> Double? {
-        let values = measurements.map(\.milliseconds).sorted()
+        percentile(fraction, values: measurements.map(\.milliseconds))
+    }
+
+    private func percentile(_ fraction: Double, values: [Double]) -> Double? {
+        let values = values.sorted()
         guard !values.isEmpty else { return nil }
 
         let index = Int(ceil(Double(values.count) * fraction)) - 1

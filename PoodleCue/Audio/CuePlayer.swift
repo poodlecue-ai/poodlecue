@@ -12,14 +12,19 @@ struct CueLatencyMeasurement: Identifiable, Equatable {
 
 final class CuePlayer {
     typealias MeasurementHandler = (CueLatencyMeasurement) -> Void
+    typealias SpeechActivityHandler = (SpeechActivitySnapshot) -> Void
 
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
+    private let speechDetector = SpeechActivityDetector()
     private var isGraphConfigured = false
+    private var isInputTapInstalled = false
     private var cueBuffer: AVAudioPCMBuffer?
     private var cueDurationNanoseconds: UInt64 = 0
+    private var lastLevelUpdateHostTime: UInt64 = 0
 
     var onMeasurement: MeasurementHandler?
+    var onSpeechActivity: SpeechActivityHandler?
 
     func prepare() throws {
         guard !engine.isRunning else { return }
@@ -36,6 +41,7 @@ final class CuePlayer {
         }
 
         cueBuffer = makeCueBuffer(format: format)
+        installInputTap()
         engine.prepare()
         try engine.start()
 
@@ -83,10 +89,49 @@ final class CuePlayer {
     }
 
     func stop() {
+        if isInputTapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            isInputTapInstalled = false
+        }
         player.stop()
         engine.stop()
         engine.reset()
+        speechDetector.reset()
         cueBuffer = nil
+    }
+
+    private func installInputTap() {
+        guard !isInputTapInstalled else { return }
+
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
+        let bufferSize = AVAudioFrameCount(max(1, format.sampleRate * 0.01))
+
+        input.installTap(
+            onBus: 0,
+            bufferSize: bufferSize,
+            format: format
+        ) { [weak self] buffer, time in
+            guard let self else { return }
+
+            let snapshot = self.speechDetector.process(
+                buffer: buffer,
+                capturedAt: time
+            )
+            let now = mach_absolute_time()
+            let shouldPublishLevel = AVAudioTime.seconds(
+                forHostTime: now - self.lastLevelUpdateHostTime
+            ) >= 0.05
+
+            if snapshot.onsetLatencyMilliseconds != nil || shouldPublishLevel {
+                self.lastLevelUpdateHostTime = now
+                DispatchQueue.main.async { [weak self] in
+                    self?.onSpeechActivity?(snapshot)
+                }
+            }
+        }
+
+        isInputTapInstalled = true
     }
 
     private func makeCueBuffer(format: AVAudioFormat) -> AVAudioPCMBuffer {

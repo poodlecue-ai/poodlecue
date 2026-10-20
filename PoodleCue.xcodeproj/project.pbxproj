@@ -12,6 +12,7 @@
 		A00000000000000000000003 /* CuePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000003 /* CuePlayer.swift */; };
 		A00000000000000000000004 /* LatencyTestViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000004 /* LatencyTestViewModel.swift */; };
 		A00000000000000000000005 /* LatencyTestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000005 /* LatencyTestView.swift */; };
+		A00000000000000000000006 /* SpeechActivityDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000008 /* SpeechActivityDetector.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +23,7 @@
 		B00000000000000000000005 /* LatencyTestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatencyTestView.swift; sourceTree = "<group>"; };
 		B00000000000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B00000000000000000000007 /* PoodleCue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PoodleCue.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B00000000000000000000008 /* SpeechActivityDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechActivityDetector.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,6 +69,7 @@
 			children = (
 				B00000000000000000000002 /* AudioSessionManager.swift */,
 				B00000000000000000000003 /* CuePlayer.swift */,
+				B00000000000000000000008 /* SpeechActivityDetector.swift */,
 			);
 			path = Audio;
 			sourceTree = "<group>";
@@ -169,6 +172,7 @@
 				A00000000000000000000003 /* CuePlayer.swift in Sources */,
 				A00000000000000000000004 /* LatencyTestViewModel.swift in Sources */,
 				A00000000000000000000005 /* LatencyTestView.swift in Sources */,
+				A00000000000000000000006 /* SpeechActivityDetector.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

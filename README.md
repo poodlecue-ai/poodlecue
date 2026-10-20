@@ -2,9 +2,9 @@
 
 PoodleCue is an iOS experiment for delivering a short, private conversational cue through earbuds with a target trigger-to-audio latency below 200 ms.
 
-## Phase 1
+## Current prototype
 
-This repository currently contains the cue-latency prototype only. It deliberately has no transcription, AI model, backend, or conversation storage.
+This repository contains the cue-latency prototype and a Phase 2 local speech-activity probe. It deliberately has no transcription, AI model, backend, or conversation storage.
 
 The prototype:
 
@@ -13,6 +13,8 @@ The prototype:
 - plays a locally generated cached cue tone;
 - estimates trigger-to-output onset from render timing and the audio engine's reported presentation latency;
 - reports the median and 95th-percentile latency.
+- analyzes short microphone buffers locally for speech activity;
+- reports speech-onset detection timing without saving or transmitting audio.
 
 ## Run
 
@@ -30,4 +32,6 @@ The simulator is useful for compilation checks, but latency results are meaningf
 The measurement combines estimated render-start delay with AVAudioEngine's reported downstream presentation latency. It does not directly measure the final acoustic arrival at the listener's ear. Hardware end-to-end validation requires an external loopback or acoustic measurement setup.
 
 See [`docs/latency-test-plan.md`](docs/latency-test-plan.md) for the test procedure.
+
+See [`docs/phase-2-spec.md`](docs/phase-2-spec.md) for the live microphone test.
 

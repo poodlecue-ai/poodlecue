@@ -213,9 +213,13 @@ final class AIRealtimeClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.waitsForConnectivity = false
         let session = URLSession(configuration: configuration)
-        var request = URLRequest(url: realtimeURL)
-        request.setValue("Bearer \(credential.value)", forHTTPHeaderField: "Authorization")
-        let socket = session.webSocketTask(with: request)
+        let socket = session.webSocketTask(
+            with: realtimeURL,
+            protocols: [
+                "realtime",
+                "openai-insecure-api-key.\(credential.value)",
+            ]
+        )
         webSocketSession = session
         webSocket = socket
         socket.resume()

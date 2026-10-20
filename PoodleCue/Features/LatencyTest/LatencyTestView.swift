@@ -276,6 +276,20 @@ struct LatencyTestView: View {
                 routeRow(label: "Output", value: model.route.output)
             }
 
+            Picker("Microphone", selection: $model.inputPreference) {
+                ForEach(AudioInputPreference.allCases) { preference in
+                    Text(preference.rawValue).tag(preference)
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(model.isSessionActive || model.isStartingSession)
+
+            Text(model.inputPreference == .iPhone
+                 ? "Best accuracy for both people. Place the phone between you; cues should remain in connected earbuds."
+                 : "Best for your own voice, but Bluetooth microphone compression can omit words.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             Button(sessionButtonTitle) {
                 model.toggleSession()
             }

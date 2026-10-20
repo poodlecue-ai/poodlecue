@@ -19,6 +19,7 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var cueCount = 0
     @Published private(set) var cueSpeechStartMilliseconds: Double?
     @Published var speaksCues = true
+    @Published var inputPreference: AudioInputPreference = .earbuds
     @Published var listeningToOtherPerson = true
     @Published var conversationPartnerName = ""
     @Published var memoryDraft = ""
@@ -223,7 +224,7 @@ final class LatencyTestViewModel: ObservableObject {
             }
 
             do {
-                route = try audioSession.activate()
+                route = try audioSession.activate(inputPreference: inputPreference)
                 transcriptionLocale = try transcriber.start()
                 try cuePlayer.prepare()
                 isSessionActive = true

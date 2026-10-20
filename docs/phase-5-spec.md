@@ -13,3 +13,5 @@ Raw audio and full transcripts are not persisted. Approved memories are stored w
 Automatic speaker identification is deliberately out of scope. A single Bluetooth microphone does not provide reliable diarization, so the UI states clearly that speaker choice is manual.
 
 The on-device recognizer prefers Indian English and receives a small curated conversational vocabulary. Bluetooth headset microphone quality is still hardware-dependent, and saved memory drafts always remain editable before approval.
+
+The session card offers two capture routes. **Earbuds mic** favors the wearer's voice but uses the compressed Bluetooth hands-free channel. **Phone mic** requests the iPhone's built-in microphone for fuller room capture while allowing Bluetooth A2DP cue output. The active input and output remain visible so route behavior can be verified on real hardware.

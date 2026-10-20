@@ -22,6 +22,8 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>PoodleCue uses the microphone during a consented session to prepare private conversational cues.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>PoodleCue transcribes speech on this iPhone during a consented session to prepare private conversational cues.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

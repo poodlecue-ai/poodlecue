@@ -9,6 +9,7 @@ struct LatencyTestView: View {
                 VStack(spacing: 24) {
                     sessionCard
                     speechActivityCard
+                    transcriptionCard
                     cueButton
                     cueMetrics
 
@@ -24,6 +25,44 @@ struct LatencyTestView: View {
             }
             .navigationTitle("PoodleCue")
         }
+    }
+
+    private var transcriptionCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("Live transcript", systemImage: "text.bubble")
+                    .font(.headline)
+                Spacer()
+                Text("On device")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.green)
+            }
+
+            Text(model.transcript.isEmpty ? "Speak to see partial text…" : model.transcript)
+                .foregroundStyle(model.transcript.isEmpty ? .secondary : .primary)
+                .frame(maxWidth: .infinity, minHeight: 72, alignment: .topLeading)
+                .textSelection(.enabled)
+
+            if !model.transcriptionLocale.isEmpty {
+                Text("Language model: \(model.transcriptionLocale)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 12) {
+                metric(label: "First text", value: model.transcriptionLatest)
+                metric(label: "Median", value: model.transcriptionMedian)
+                metric(label: "p95", value: model.transcriptionP95)
+            }
+
+            Text("Partial text and timing exist only for this active session.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .opacity(model.isSessionActive ? 1 : 0.55)
     }
 
     private var speechActivityCard: some View {
@@ -167,7 +206,7 @@ struct LatencyTestView: View {
     }
 
     private var measurementNote: some View {
-        Text("Microphone samples are analyzed live and discarded—this build does not save or transmit audio. Detection timing uses the buffer clock when valid and the current route latency after a clock discontinuity. Final acoustic validation still requires an external test.")
+        Text("Microphone samples are analyzed and transcribed on device, then discarded. This build does not save transcripts, transmit audio, or contact a backend. Final acoustic validation still requires an external test.")
             .font(.footnote)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)

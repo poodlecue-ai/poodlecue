@@ -13,6 +13,7 @@ struct CueLatencyMeasurement: Identifiable, Equatable {
 final class CuePlayer {
     typealias MeasurementHandler = (CueLatencyMeasurement) -> Void
     typealias SpeechActivityHandler = (SpeechActivitySnapshot) -> Void
+    typealias AudioBufferHandler = (AVAudioPCMBuffer) -> Void
 
     private var engine = AVAudioEngine()
     private var player = AVAudioPlayerNode()
@@ -26,6 +27,7 @@ final class CuePlayer {
 
     var onMeasurement: MeasurementHandler?
     var onSpeechActivity: SpeechActivityHandler?
+    var onAudioBuffer: AudioBufferHandler?
 
     func prepare() throws {
         guard !engine.isRunning else { return }
@@ -146,6 +148,7 @@ final class CuePlayer {
                 self.sessionGeneration == generation
             else { return }
 
+            self.onAudioBuffer?(buffer)
             let snapshot = self.speechDetector.process(
                 buffer: buffer,
                 capturedAt: time

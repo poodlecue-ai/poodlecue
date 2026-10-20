@@ -4,7 +4,7 @@ PoodleCue is an iOS experiment for delivering a short, private conversational cu
 
 ## Current prototype
 
-This repository contains the cue-latency prototype and a Phase 2 local speech-activity probe. It deliberately has no transcription, AI model, backend, or conversation storage.
+This repository contains the cue-latency prototype, local speech-activity detection, and Phase 3 on-device partial transcription. It deliberately has no AI cue model, backend, or conversation storage.
 
 The prototype:
 
@@ -15,6 +15,8 @@ The prototype:
 - reports the median and 95th-percentile latency.
 - analyzes short microphone buffers locally for speech activity;
 - reports speech-onset detection timing without saving or transmitting audio.
+- displays partial on-device transcription and time-to-first-text metrics;
+- discards transcript text when the session ends.
 
 ## Run
 
@@ -34,4 +36,6 @@ The measurement combines estimated render-start delay with AVAudioEngine's repor
 See [`docs/latency-test-plan.md`](docs/latency-test-plan.md) for the test procedure.
 
 See [`docs/phase-2-spec.md`](docs/phase-2-spec.md) for the live microphone test.
+
+See [`docs/phase-3-spec.md`](docs/phase-3-spec.md) for the on-device transcription test.
 

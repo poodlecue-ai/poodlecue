@@ -48,8 +48,8 @@ struct LatencyTestView: View {
             .pickerStyle(.segmented)
 
             Text(model.listeningToOtherPerson
-                 ? "Cues are enabled for the other person’s speech."
-                 : "Your speech still provides context, but cues are paused.")
+                 ? "PoodleCue will treat the next speech as theirs and enable cues. This is a label—not automatic voice detection."
+                 : "PoodleCue will treat the next speech as yours. Transcription continues, but cues are paused.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

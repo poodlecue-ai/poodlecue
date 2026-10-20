@@ -11,3 +11,5 @@ Phase 5 adds an intentionally small, local-first memory loop:
 Raw audio and full transcripts are not persisted. Approved memories are stored with iOS complete file protection in the app sandbox. There is no backend or account sync in this phase.
 
 Automatic speaker identification is deliberately out of scope. A single Bluetooth microphone does not provide reliable diarization, so the UI states clearly that speaker choice is manual.
+
+The on-device recognizer prefers Indian English and receives a small curated conversational vocabulary. Bluetooth headset microphone quality is still hardware-dependent, and saved memory drafts always remain editable before approval.

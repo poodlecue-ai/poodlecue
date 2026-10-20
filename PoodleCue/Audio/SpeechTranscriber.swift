@@ -43,6 +43,7 @@ final class SpeechTranscriber {
         request.shouldReportPartialResults = true
         request.addsPunctuation = true
         request.taskHint = .dictation
+        request.contextualStrings = Self.conversationVocabulary
 
         self.recognizer = recognizer
         self.request = request
@@ -85,7 +86,9 @@ final class SpeechTranscriber {
     }
 
     private func makeOnDeviceRecognizer() -> SFSpeechRecognizer? {
-        var identifiers = [Locale.current.identifier, "en-IN", "en-US"]
+        // The first MVP audience speaks Indian English. Prefer that acoustic
+        // model instead of relying on the phone's display-language locale.
+        var identifiers = ["en-IN", Locale.current.identifier, "en-US"]
         var seen = Set<String>()
         identifiers = identifiers.filter { seen.insert($0).inserted }
 
@@ -101,4 +104,20 @@ final class SpeechTranscriber {
 
         return nil
     }
+
+    private static let conversationVocabulary = [
+        "my kids didn't sleep well last night",
+        "didn't sleep well",
+        "last night",
+        "this morning",
+        "my family",
+        "my children",
+        "my daughter",
+        "my son",
+        "at the gym",
+        "training for a marathon",
+        "at work",
+        "next weekend",
+        "next month"
+    ]
 }

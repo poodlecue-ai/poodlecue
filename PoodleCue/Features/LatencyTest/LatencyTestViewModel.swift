@@ -68,6 +68,7 @@ final class LatencyTestViewModel: ObservableObject {
     private var previousUserTurn: String?
     private var recentCueTexts: [String] = []
     private var aiShadowTask: Task<Void, Never>?
+    private var transcriptPauseTask: Task<Void, Never>?
 
     init() {
         aiShadowState = aiShadowClient.isConfigured ? .idle : .unavailable
@@ -87,11 +88,9 @@ final class LatencyTestViewModel: ObservableObject {
             }
 
             if wasSpeechActive && !snapshot.isSpeechActive {
-                if listeningToOtherPerson {
-                    createCueIfReady()
-                } else {
-                    captureUserTurn()
-                }
+                // Give on-device recognition time to deliver the final words.
+                // Any later transcript update restarts this short countdown.
+                scheduleTranscriptPauseFallback(for: transcript)
             }
         }
         cuePlayer.onAudioBuffer = { [weak self] buffer in
@@ -281,6 +280,7 @@ final class LatencyTestViewModel: ObservableObject {
     }
 
     private func speakerRoleChanged(from previousRoleWasOther: Bool) {
+        transcriptPauseTask?.cancel()
         if !previousRoleWasOther {
             captureUserTurn()
         }
@@ -296,6 +296,7 @@ final class LatencyTestViewModel: ObservableObject {
     }
 
     private func captureUserTurn() {
+        transcriptPauseTask?.cancel()
         let text = transcriptDelta(since: roleStartTranscript)
         guard !text.isEmpty else { return }
         previousUserTurn = text
@@ -320,6 +321,7 @@ final class LatencyTestViewModel: ObservableObject {
         conversationTurns = []
         latestCueFeedback = nil
         aiShadowTask?.cancel()
+        transcriptPauseTask?.cancel()
         aiShadowState = aiShadowClient.isConfigured ? .idle : .unavailable
         aiComparisonChoice = nil
         localShadowBaseline = nil
@@ -373,6 +375,7 @@ final class LatencyTestViewModel: ObservableObject {
 
     private func stopSession() {
         aiShadowTask?.cancel()
+        transcriptPauseTask?.cancel()
         cueSpeaker.stop()
         transcriber.stop()
         cuePlayer.stop()
@@ -396,8 +399,40 @@ final class LatencyTestViewModel: ObservableObject {
             pendingSpeechOnsetNanoseconds = nil
         }
 
+        let currentTurnText = transcriptDelta(since: roleStartTranscript)
+        if !currentTurnText.isEmpty {
+            if listeningToOtherPerson {
+                // The speech recognizer can successfully hear a distant voice
+                // even when the fixed audio-level threshold misses its onset.
+                // Transcript activity therefore also arms cue generation.
+                needsCueForCurrentUtterance = true
+            }
+            scheduleTranscriptPauseFallback(for: text)
+        }
+
         if !isSpeechActive {
+            if isFinal {
+                finishCurrentTranscriptTurn()
+            }
+        }
+    }
+
+    private func scheduleTranscriptPauseFallback(for transcriptSnapshot: String) {
+        transcriptPauseTask?.cancel()
+        transcriptPauseTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(1_200))
+            guard !Task.isCancelled, let self else { return }
+            guard transcript == transcriptSnapshot, !isSpeechActive else { return }
+            finishCurrentTranscriptTurn()
+        }
+    }
+
+    private func finishCurrentTranscriptTurn() {
+        transcriptPauseTask?.cancel()
+        if listeningToOtherPerson {
             createCueIfReady()
+        } else {
+            captureUserTurn()
         }
     }
 
@@ -414,6 +449,7 @@ final class LatencyTestViewModel: ObservableObject {
                 recentCueTexts: recentCueTexts
             )
         needsCueForCurrentUtterance = false
+        transcriptPauseTask?.cancel()
         latestCue = cue
         latestCueFeedback = nil
         localShadowBaseline = cue?.text ?? "Stay silent"

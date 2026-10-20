@@ -15,12 +15,19 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var transcriptionLocale = ""
     @Published private(set) var transcriptionLatencies: [Double] = []
     @Published private(set) var isTranscriptFinal = false
+    @Published private(set) var latestCue: LocalConversationCue?
+    @Published private(set) var cueCount = 0
+    @Published private(set) var cueSpeechStartMilliseconds: Double?
+    @Published var speaksCues = true
     @Published var errorMessage: String?
 
     private let audioSession = AudioSessionManager()
     private let cuePlayer = CuePlayer()
     private let transcriber = SpeechTranscriber()
+    private let cueEngine = LocalCueEngine()
+    private let cueSpeaker = CueSpeaker()
     private var pendingSpeechOnsetNanoseconds: UInt64?
+    private var needsCueForCurrentUtterance = false
 
     init() {
         cuePlayer.onMeasurement = { [weak self] measurement in
@@ -28,12 +35,18 @@ final class LatencyTestViewModel: ObservableObject {
         }
         cuePlayer.onSpeechActivity = { [weak self] snapshot in
             guard let self else { return }
+            let wasSpeechActive = isSpeechActive
             microphoneLevelDBFS = snapshot.levelDBFS
             isSpeechActive = snapshot.isSpeechActive
 
             if let latency = snapshot.onsetLatencyMilliseconds {
                 speechDetectionLatencies.append(latency)
                 pendingSpeechOnsetNanoseconds = DispatchTime.now().uptimeNanoseconds
+                needsCueForCurrentUtterance = true
+            }
+
+            if wasSpeechActive && !snapshot.isSpeechActive {
+                createCueIfReady()
             }
         }
         cuePlayer.onAudioBuffer = { [weak self] buffer in
@@ -47,6 +60,15 @@ final class LatencyTestViewModel: ObservableObject {
         transcriber.onError = { [weak self] message in
             DispatchQueue.main.async {
                 self?.errorMessage = message
+            }
+        }
+        let cueSpeaker = cueSpeaker
+        cuePlayer.shouldSuppressInput = { [weak cueSpeaker] in
+            cueSpeaker?.isSpeaking ?? false
+        }
+        cueSpeaker.onSpeechStarted = { [weak self] latency in
+            DispatchQueue.main.async {
+                self?.cueSpeechStartMilliseconds = latency
             }
         }
     }
@@ -118,6 +140,11 @@ final class LatencyTestViewModel: ObservableObject {
         speechDetectionLatencies.removeAll()
     }
 
+    func replayLatestCue() {
+        guard let latestCue else { return }
+        cueSpeaker.speak(latestCue.text)
+    }
+
     private func startSession() {
         errorMessage = nil
         isStartingSession = true
@@ -128,6 +155,12 @@ final class LatencyTestViewModel: ObservableObject {
         transcriptionLocale = ""
         isTranscriptFinal = false
         pendingSpeechOnsetNanoseconds = nil
+        needsCueForCurrentUtterance = false
+        latestCue = nil
+        cueCount = 0
+        cueSpeechStartMilliseconds = nil
+        cueEngine.reset()
+        cueSpeaker.stop()
         microphoneLevelDBFS = -80
         isSpeechActive = false
 
@@ -160,6 +193,7 @@ final class LatencyTestViewModel: ObservableObject {
     }
 
     private func stopSession() {
+        cueSpeaker.stop()
         transcriber.stop()
         cuePlayer.stop()
         audioSession.deactivate()
@@ -167,6 +201,7 @@ final class LatencyTestViewModel: ObservableObject {
         microphoneLevelDBFS = -80
         isSpeechActive = false
         pendingSpeechOnsetNanoseconds = nil
+        needsCueForCurrentUtterance = false
         isSessionActive = false
     }
 
@@ -179,6 +214,26 @@ final class LatencyTestViewModel: ObservableObject {
             let elapsed = now > startedAt ? now - startedAt : 0
             transcriptionLatencies.append(Double(elapsed) / 1_000_000)
             pendingSpeechOnsetNanoseconds = nil
+        }
+
+        if !isSpeechActive {
+            createCueIfReady()
+        }
+    }
+
+    private func createCueIfReady() {
+        guard
+            needsCueForCurrentUtterance,
+            let cue = cueEngine.suggest(from: transcript)
+        else { return }
+
+        latestCue = cue
+        cueCount += 1
+        cueSpeechStartMilliseconds = nil
+        needsCueForCurrentUtterance = false
+
+        if speaksCues {
+            cueSpeaker.speak(cue.text)
         }
     }
 

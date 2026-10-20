@@ -10,6 +10,7 @@ struct LatencyTestView: View {
                     sessionCard
                     speechActivityCard
                     transcriptionCard
+                    conversationCueCard
                     cueButton
                     cueMetrics
 
@@ -25,6 +26,52 @@ struct LatencyTestView: View {
             }
             .navigationTitle("PoodleCue")
         }
+    }
+
+    private var conversationCueCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("Conversation cue", systemImage: "sparkles")
+                    .font(.headline)
+                Spacer()
+                Text("Local rules")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.blue)
+            }
+
+            Text(model.latestCue?.text ?? "A short cue will appear after a complete thought.")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(model.latestCue == nil ? .secondary : .primary)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .topLeading)
+
+            if let cue = model.latestCue {
+                Text(cue.reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 12) {
+                    metric(label: "Rule", value: cue.generationMilliseconds)
+                    metric(label: "Voice start", value: model.cueSpeechStartMilliseconds)
+                }
+            }
+
+            HStack {
+                Toggle("Speak cues", isOn: $model.speaksCues)
+                    .font(.subheadline)
+                Spacer()
+                Text("Cues: \(model.cueCount)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Replay") {
+                    model.replayLatestCue()
+                }
+                .disabled(model.latestCue == nil)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .opacity(model.isSessionActive ? 1 : 0.55)
     }
 
     private var transcriptionCard: some View {
@@ -206,7 +253,7 @@ struct LatencyTestView: View {
     }
 
     private var measurementNote: some View {
-        Text("Microphone samples are analyzed and transcribed on device, then discarded. This build does not save transcripts, transmit audio, or contact a backend. Final acoustic validation still requires an external test.")
+        Text("Microphone samples are analyzed and transcribed on device, then discarded. Conversation cues come from local curated rules, not generated AI text. This build does not save transcripts or contact a backend.")
             .font(.footnote)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -28,6 +28,7 @@ final class CuePlayer {
     var onMeasurement: MeasurementHandler?
     var onSpeechActivity: SpeechActivityHandler?
     var onAudioBuffer: AudioBufferHandler?
+    var shouldSuppressInput: (() -> Bool)?
 
     func prepare() throws {
         guard !engine.isRunning else { return }
@@ -147,6 +148,7 @@ final class CuePlayer {
                 let self,
                 self.sessionGeneration == generation
             else { return }
+            guard self.shouldSuppressInput?() != true else { return }
 
             self.onAudioBuffer?(buffer)
             let snapshot = self.speechDetector.process(

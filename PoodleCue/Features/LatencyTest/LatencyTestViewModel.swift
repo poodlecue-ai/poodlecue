@@ -662,8 +662,7 @@ final class LatencyTestViewModel: ObservableObject {
         lastTranscriptUpdateNanoseconds = nil
 
         let prefetchedResult = speculativeCueResult.flatMap {
-            normalizedTranscriptForComparison($0.transcript)
-                == normalizedTranscriptForComparison(themText) ? $0.cue : nil
+            prefetchMatches(prepared: $0.transcript, final: themText) ? $0.cue : nil
         }
         speculativeCueTask?.cancel()
         speculativeCueTask = nil
@@ -846,6 +845,22 @@ final class LatencyTestViewModel: ObservableObject {
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
+    }
+
+    private func prefetchMatches(prepared: String, final: String) -> Bool {
+        let preparedText = normalizedTranscriptForComparison(prepared)
+        let finalText = normalizedTranscriptForComparison(final)
+        guard !preparedText.isEmpty, !finalText.isEmpty else { return false }
+        if preparedText == finalText { return true }
+
+        let preparedWords = preparedText.split(separator: " ")
+        let finalWords = finalText.split(separator: " ")
+        guard preparedWords.count >= 10,
+              preparedWords.count < finalWords.count,
+              Double(preparedWords.count) / Double(finalWords.count) >= 0.75 else {
+            return false
+        }
+        return finalWords.starts(with: preparedWords)
     }
 
     private func requestSpeechRecognitionPermission() async -> Bool {

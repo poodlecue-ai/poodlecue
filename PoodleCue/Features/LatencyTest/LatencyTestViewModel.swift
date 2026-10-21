@@ -20,6 +20,11 @@ enum CueFeedback: String, CaseIterable {
     case repeated = "Repeated"
 }
 
+private struct SpeculativeCueResult {
+    let transcript: String
+    let cue: AIShadowCue
+}
+
 @MainActor
 final class LatencyTestViewModel: ObservableObject {
     let aiEvaluationTarget = 15
@@ -40,6 +45,7 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var cueSpeechStartMilliseconds: Double?
     @Published private(set) var latestTurnWaitMilliseconds: Double?
     @Published private(set) var latestAIRequestMilliseconds: Double?
+    @Published private(set) var latestAIWasPrefetched = false
     @Published private(set) var latestEndToEarMilliseconds: Double?
     @Published private(set) var endToEarLatencies: [Double] = []
     @Published private(set) var conversationTurns: [ConversationTurn] = []
@@ -69,6 +75,7 @@ final class LatencyTestViewModel: ObservableObject {
     private let cueSpeaker = CueSpeaker()
     private let aiShadowClient = AIShadowClient()
     private let aiRealtimeClient = AIRealtimeClient()
+    private let speculativeRealtimeClient = AIRealtimeClient()
     let memoryStore = ConversationMemoryStore()
     private var pendingSpeechOnsetNanoseconds: UInt64?
     private var needsCueForCurrentUtterance = false
@@ -76,6 +83,9 @@ final class LatencyTestViewModel: ObservableObject {
     private var previousUserTurn: String?
     private var recentCueTexts: [String] = []
     private var aiShadowTask: Task<Void, Never>?
+    private var speculativeCueTask: Task<Void, Never>?
+    private var speculativeCueResult: SpeculativeCueResult?
+    private var speculativeRequestedTranscript: String?
     private var transcriptPauseTask: Task<Void, Never>?
     private var turnDeadlineArmed = false
     private var currentTurnEndedAtNanoseconds: UInt64?
@@ -381,6 +391,10 @@ final class LatencyTestViewModel: ObservableObject {
 
     private func speakerRoleChanged(from previousRoleWasOther: Bool) {
         transcriptPauseTask?.cancel()
+        speculativeCueTask?.cancel()
+        speculativeCueTask = nil
+        speculativeCueResult = nil
+        speculativeRequestedTranscript = nil
         if !previousRoleWasOther {
             captureUserTurn()
         }
@@ -428,11 +442,16 @@ final class LatencyTestViewModel: ObservableObject {
         cueSpeechStartMilliseconds = nil
         latestTurnWaitMilliseconds = nil
         latestAIRequestMilliseconds = nil
+        latestAIWasPrefetched = false
         latestEndToEarMilliseconds = nil
         endToEarLatencies.removeAll()
         conversationTurns = []
         latestCueFeedback = nil
         aiShadowTask?.cancel()
+        speculativeCueTask?.cancel()
+        speculativeCueTask = nil
+        speculativeCueResult = nil
+        speculativeRequestedTranscript = nil
         transcriptPauseTask?.cancel()
         aiShadowState = aiShadowClient.isConfigured ? .idle : .unavailable
         aiComparisonChoice = nil
@@ -476,8 +495,13 @@ final class LatencyTestViewModel: ObservableObject {
 
     private func stopSession() {
         aiShadowTask?.cancel()
+        speculativeCueTask?.cancel()
+        speculativeCueTask = nil
+        speculativeCueResult = nil
+        speculativeRequestedTranscript = nil
         transcriptPauseTask?.cancel()
         aiRealtimeClient.disconnect()
+        speculativeRealtimeClient.disconnect()
         aiTransportLabel = "Not connected"
         cueSpeaker.stop()
         transcriber.stop()
@@ -516,6 +540,7 @@ final class LatencyTestViewModel: ObservableObject {
                 // even when the fixed audio-level threshold misses its onset.
                 // Transcript activity therefore also arms cue generation.
                 needsCueForCurrentUtterance = true
+                startSpeculativeCueIfUseful(for: currentTurnText)
             }
             if !turnDeadlineArmed {
                 scheduleTranscriptPauseFallback(for: text)
@@ -525,6 +550,46 @@ final class LatencyTestViewModel: ObservableObject {
         if !isSpeechActive {
             if isFinal {
                 finishCurrentTranscriptTurn()
+            }
+        }
+    }
+
+    private func startSpeculativeCueIfUseful(for turnText: String) {
+        let cleanText = turnText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isSessionActive,
+              listeningToOtherPerson,
+              speculativeRealtimeClient.isConfigured,
+              cleanText.split(whereSeparator: { $0.isWhitespace }).count >= 6,
+              speculativeCueTask == nil,
+              speculativeRequestedTranscript != cleanText else { return }
+
+        speculativeRequestedTranscript = cleanText
+        let payload = AIShadowRequest(
+            them: cleanText,
+            me: previousUserTurn,
+            memory: selectedMemory?.summary,
+            recentCues: recentCueTexts
+        )
+
+        speculativeCueTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await speculativeRealtimeClient.compare(payload)
+                guard !Task.isCancelled else { return }
+                speculativeCueResult = SpeculativeCueResult(
+                    transcript: cleanText,
+                    cue: result
+                )
+            } catch {
+                // Speculation is optional; the confirmed turn still uses the
+                // normal realtime request if this attempt is unavailable.
+            }
+
+            speculativeCueTask = nil
+            guard isSessionActive, listeningToOtherPerson else { return }
+            let latestText = transcriptDelta(since: roleStartTranscript)
+            if latestText != cleanText {
+                startSpeculativeCueIfUseful(for: latestText)
             }
         }
     }
@@ -577,6 +642,7 @@ final class LatencyTestViewModel: ObservableObject {
         cueSpeechStartMilliseconds = nil
         latestTurnWaitMilliseconds = nil
         latestAIRequestMilliseconds = nil
+        latestAIWasPrefetched = false
         latestEndToEarMilliseconds = nil
         pendingCueSpeechFromNanoseconds = nil
 
@@ -594,6 +660,27 @@ final class LatencyTestViewModel: ObservableObject {
         }
         currentTurnEndedAtNanoseconds = nil
         lastTranscriptUpdateNanoseconds = nil
+
+        let prefetchedResult = speculativeCueResult.flatMap {
+            normalizedTranscriptForComparison($0.transcript)
+                == normalizedTranscriptForComparison(themText) ? $0.cue : nil
+        }
+        speculativeCueTask?.cancel()
+        speculativeCueTask = nil
+        speculativeCueResult = nil
+        speculativeRequestedTranscript = nil
+
+        if let prefetchedResult {
+            aiTransportLabel = "Realtime prefetched"
+            latestAIRequestMilliseconds = 0
+            latestAIWasPrefetched = true
+            acceptAIResult(
+                prefetchedResult,
+                turnEndedAtNanoseconds: turnEndedAtNanoseconds,
+                realtimeSuccess: true
+            )
+            return
+        }
 
         requestAIShadowCue(
             themText: themText,
@@ -627,7 +714,6 @@ final class LatencyTestViewModel: ObservableObject {
                     do {
                         result = try await aiRealtimeClient.compare(payload)
                         aiTransportLabel = "Realtime"
-                        recordRealtimeSuccess(result)
                     } catch is CancellationError {
                         return
                     } catch {
@@ -646,17 +732,11 @@ final class LatencyTestViewModel: ObservableObject {
                     ? requestFinishedAt - requestStartedAt
                     : 0
                 latestAIRequestMilliseconds = Double(requestElapsed) / 1_000_000
-                recordAIShadowResult(result)
-                aiShadowState = .ready(result)
-                if result.shouldSpeak {
-                    cueCount += 1
-                    recentCueTexts.append(result.cue)
-                    recentCueTexts = Array(recentCueTexts.suffix(5))
-                }
-                if speaksCues, result.shouldSpeak {
-                    pendingCueSpeechFromNanoseconds = turnEndedAtNanoseconds
-                    cueSpeaker.speak(result.cue)
-                }
+                acceptAIResult(
+                    result,
+                    turnEndedAtNanoseconds: turnEndedAtNanoseconds,
+                    realtimeSuccess: aiTransportLabel == "Realtime"
+                )
             } catch is CancellationError {
                 return
             } catch {
@@ -664,6 +744,27 @@ final class LatencyTestViewModel: ObservableObject {
                 incrementEvaluationCount(forKey: "aiEvaluation.failures")
                 aiShadowState = .failed("AI cue unavailable.")
             }
+        }
+    }
+
+    private func acceptAIResult(
+        _ result: AIShadowCue,
+        turnEndedAtNanoseconds: UInt64?,
+        realtimeSuccess: Bool
+    ) {
+        if realtimeSuccess {
+            recordRealtimeSuccess(result)
+        }
+        recordAIShadowResult(result)
+        aiShadowState = .ready(result)
+        if result.shouldSpeak {
+            cueCount += 1
+            recentCueTexts.append(result.cue)
+            recentCueTexts = Array(recentCueTexts.suffix(5))
+        }
+        if speaksCues, result.shouldSpeak {
+            pendingCueSpeechFromNanoseconds = turnEndedAtNanoseconds
+            cueSpeaker.speak(result.cue)
         }
     }
 
@@ -683,6 +784,10 @@ final class LatencyTestViewModel: ObservableObject {
                 guard isSessionActive else { return }
                 aiTransportLabel = "HTTP fallback"
             }
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            try? await speculativeRealtimeClient.connect()
         }
     }
 
@@ -734,6 +839,13 @@ final class LatencyTestViewModel: ObservableObject {
             text = transcript
         }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func normalizedTranscriptForComparison(_ text: String) -> String {
+        text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     private func requestSpeechRecognitionPermission() async -> Bool {

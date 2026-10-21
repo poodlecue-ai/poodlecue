@@ -120,10 +120,10 @@ final class AIRealtimeClient {
         "# DEFAULT: Prefer a curious follow-up about the exact experience, feeling, reason, or obstacle they mentioned—not advice or a solution.",
         "# PROHIBITED: Do not recommend an app, tracker, product, schedule, habit, task, or solution unless the other person explicitly mentioned it or asked for advice.",
         "# CUE FORM: Speak the exact words the user can say next: one crisp clause of 2-8 words. Never begin with Ask, Acknowledge, Celebrate, Answer, Recall, Say, or Tell. Use plain spoken wording with no filler or repeated idea.",
-        "# SILENCE: Prefer silence for low-signal remarks, repetition, or when the user's previous turn already asked the obvious question. If no directly grounded action exists, return silence.",
+        "# SILENCE: Prefer silence for low-signal remarks, repetition, or when the user's previous turn already asked the obvious question. If no directly grounded action exists, return SILENCE.",
         "# EXAMPLE: them='I may change jobs but fear regretting it' -> cue='What might you regret?' Never output 'Ask what they might regret.'",
         "# SAFETY: Do not mention being an AI. Do not provide therapy, diagnosis, manipulation, or covert persuasion.",
-        "# OUTPUT: Return exactly one JSON object and no markdown: {\"should_speak\":true|false,\"cue\":\"\",\"intent\":\"empathy|answer|follow_up|recall|celebrate|silence\",\"reason\":\"brief grounding reason\",\"confidence\":0.0}.",
+        "# OUTPUT: Return only the exact short cue, or the single word SILENCE. No JSON, label, explanation, or markdown.",
     ].joined(separator: " ")
 
     private struct ClientCredential: Decodable {
@@ -298,7 +298,7 @@ final class AIRealtimeClient {
             "response": [
                 "conversation": "none",
                 "output_modalities": ["text"],
-                "max_output_tokens": 80,
+                "max_output_tokens": 20,
                 "reasoning": ["effort": "minimal"],
                 "metadata": ["request_id": requestID],
                 "instructions": Self.responseInstructions,
@@ -375,30 +375,27 @@ final class AIRealtimeClient {
 
     private func finishPending(with rawText: String) {
         guard let pendingResponse else { return }
-        do {
-            let jsonText = extractJSONObject(from: rawText)
-            let value = try JSONDecoder().decode(GeneratedCue.self, from: Data(jsonText.utf8))
-            let elapsed = pendingResponse.startedAt.duration(to: .now)
-            let components = elapsed.components
-            let milliseconds = Double(components.seconds) * 1_000
-                + Double(components.attoseconds) / 1_000_000_000_000_000
-            let cueText = value.cue.trimmingCharacters(in: .whitespacesAndNewlines)
-            let shouldSpeak = value.shouldSpeak && isAllowedConversationalCue(cueText)
-            let cue = AIShadowCue(
-                shouldSpeak: shouldSpeak,
-                cue: shouldSpeak ? String(cueText.prefix(160)) : "",
-                intent: value.intent,
-                reason: String(value.reason.prefix(240)),
-                confidence: min(max(value.confidence, 0), 1),
-                latencyMilliseconds: milliseconds
-            )
-            timeoutTask?.cancel()
-            timeoutTask = nil
-            self.pendingResponse = nil
-            pendingResponse.continuation.resume(returning: cue)
-        } catch {
-            failPending(with: error)
-        }
+        let elapsed = pendingResponse.startedAt.duration(to: .now)
+        let components = elapsed.components
+        let milliseconds = Double(components.seconds) * 1_000
+            + Double(components.attoseconds) / 1_000_000_000_000_000
+        let cueText = rawText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        let choseSilence = cueText.caseInsensitiveCompare("SILENCE") == .orderedSame
+        let shouldSpeak = !choseSilence && isAllowedConversationalCue(cueText)
+        let cue = AIShadowCue(
+            shouldSpeak: shouldSpeak,
+            cue: shouldSpeak ? String(cueText.prefix(100)) : "",
+            intent: shouldSpeak ? "follow_up" : "silence",
+            reason: shouldSpeak ? "Grounded in their latest thought." : "No cue would add value.",
+            confidence: shouldSpeak ? 0.8 : 0.7,
+            latencyMilliseconds: milliseconds
+        )
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        self.pendingResponse = nil
+        pendingResponse.continuation.resume(returning: cue)
     }
 
     private func failPending(with error: Error) {

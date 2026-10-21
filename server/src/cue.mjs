@@ -9,7 +9,7 @@ export const REALTIME_INSTRUCTIONS = [
   "Never begin with Ask, Acknowledge, Celebrate, Answer, Recall, Say, or Tell.",
   "Use plain spoken wording with no filler or repeated idea.",
   "Prefer silence for low-signal remarks, repetition, or when no directly grounded action exists.",
-  "Return only one compact JSON object with should_speak, cue, intent, reason, and confidence.",
+  "Return only the exact short cue, or the single word SILENCE. No JSON, label, explanation, or markdown.",
 ].join(" ");
 
 export function sanitizePayload(body) {
@@ -102,7 +102,7 @@ export function buildRealtimeClientSecretRequest(model) {
       type: "realtime",
       model,
       output_modalities: ["text"],
-    max_output_tokens: 80,
+      max_output_tokens: 20,
       instructions: REALTIME_INSTRUCTIONS,
     },
   };

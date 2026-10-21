@@ -81,7 +81,8 @@ final class LatencyTestViewModel: ObservableObject {
     private var pendingCueSpeechFromNanoseconds: UInt64?
 
     private static let speechReleaseEstimateNanoseconds: UInt64 = 350_000_000
-    private static let transcriptStabilityDelay = Duration.milliseconds(450)
+    private static let acousticTurnDelay = Duration.milliseconds(450)
+    private static let transcriptOnlyTurnDelay = Duration.milliseconds(650)
 
     init() {
         aiShadowState = aiShadowClient.isConfigured ? .idle : .unavailable
@@ -531,10 +532,17 @@ final class LatencyTestViewModel: ObservableObject {
         transcriptPauseTask?.cancel()
         turnDeadlineArmed = fixedDeadline
         transcriptPauseTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.transcriptStabilityDelay)
+            let delay = fixedDeadline
+                ? Self.acousticTurnDelay
+                : Self.transcriptOnlyTurnDelay
+            try? await Task.sleep(for: delay)
             guard !Task.isCancelled, let self else { return }
-            guard !isSpeechActive else { return }
-            if !fixedDeadline {
+            if fixedDeadline {
+                guard !isSpeechActive else { return }
+            } else {
+                // Transcript inactivity is an independent end-of-turn signal.
+                // It must still work when steady background sound prevents the
+                // audio-level detector from returning to its quiet state.
                 guard transcript == transcriptSnapshot else { return }
             }
             finishCurrentTranscriptTurn()

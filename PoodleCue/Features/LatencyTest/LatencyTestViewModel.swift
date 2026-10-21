@@ -38,6 +38,7 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var latestCue: LocalConversationCue?
     @Published private(set) var cueCount = 0
     @Published private(set) var cueSpeechStartMilliseconds: Double?
+    @Published private(set) var latestTurnWaitMilliseconds: Double?
     @Published private(set) var latestEndToEarMilliseconds: Double?
     @Published private(set) var endToEarLatencies: [Double] = []
     @Published private(set) var conversationTurns: [ConversationTurn] = []
@@ -424,6 +425,7 @@ final class LatencyTestViewModel: ObservableObject {
         latestCue = nil
         cueCount = 0
         cueSpeechStartMilliseconds = nil
+        latestTurnWaitMilliseconds = nil
         latestEndToEarMilliseconds = nil
         endToEarLatencies.removeAll()
         conversationTurns = []
@@ -570,6 +572,8 @@ final class LatencyTestViewModel: ObservableObject {
         latestCue = nil
         latestCueFeedback = nil
         localShadowBaseline = nil
+        cueSpeechStartMilliseconds = nil
+        latestTurnWaitMilliseconds = nil
         latestEndToEarMilliseconds = nil
         pendingCueSpeechFromNanoseconds = nil
 
@@ -578,6 +582,13 @@ final class LatencyTestViewModel: ObservableObject {
         let priorCueTexts = recentCueTexts
         let turnEndedAtNanoseconds = currentTurnEndedAtNanoseconds
             ?? lastTranscriptUpdateNanoseconds
+        if let turnEndedAtNanoseconds {
+            let now = DispatchTime.now().uptimeNanoseconds
+            let elapsed = now > turnEndedAtNanoseconds
+                ? now - turnEndedAtNanoseconds
+                : 0
+            latestTurnWaitMilliseconds = Double(elapsed) / 1_000_000
+        }
         currentTurnEndedAtNanoseconds = nil
         lastTranscriptUpdateNanoseconds = nil
 

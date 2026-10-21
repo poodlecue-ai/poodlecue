@@ -285,23 +285,17 @@ struct ConversationView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     HStack {
-                        Text("AI \(Int(result.latencyMilliseconds)) ms")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if let endToEar = model.latestEndToEarMilliseconds {
-                            Text("End-to-ear \(Int(endToEar)) ms")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.orange)
-                        } else if model.speaksCues {
-                            Text("Measuring end-to-ear…")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
                         Spacer()
                         Button("Hear AI") {
                             model.replayLatestAICue()
                         }
                         .font(.footnote)
+                    }
+                    HStack(spacing: 6) {
+                        latencyStage("Turn", model.latestTurnWaitMilliseconds)
+                        latencyStage("AI", result.latencyMilliseconds)
+                        latencyStage("Voice", model.cueSpeechStartMilliseconds)
+                        latencyStage("Total", model.latestEndToEarMilliseconds, highlighted: true)
                     }
                 } else {
                     Text("Stay silent")
@@ -367,6 +361,26 @@ struct ConversationView: View {
     private func formattedEvaluationLatency(_ value: Double?) -> String {
         guard let value else { return "—" }
         return "\(Int(value)) ms"
+    }
+
+    private func latencyStage(
+        _ label: String,
+        _ value: Double?,
+        highlighted: Bool = false
+    ) -> some View {
+        VStack(spacing: 2) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value.map { "\(Int($0))" } ?? "—")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(highlighted ? .orange : .primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 5)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var memoryCard: some View {

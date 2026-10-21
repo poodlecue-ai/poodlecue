@@ -177,9 +177,11 @@ final class AIRealtimeClient {
     private var receiveTask: Task<Void, Never>?
     private var timeoutTask: Task<Void, Never>?
     private var pendingResponse: PendingResponse?
+    private var sessionReady = false
+    private var connectionInProgress = false
 
     var isConfigured: Bool { tokenEndpoint != nil && appToken != nil }
-    var isConnected: Bool { webSocket != nil }
+    var isConnected: Bool { webSocket != nil && sessionReady }
 
     init(bundle: Bundle = .main) {
         let values = AIShadowConfiguration(bundle: bundle)
@@ -194,50 +196,62 @@ final class AIRealtimeClient {
     }
 
     func connect() async throws {
-        guard webSocket == nil else { return }
+        if sessionReady { return }
         guard let tokenEndpoint, let appToken else {
             throw AIShadowError.notConfigured
         }
 
-        var tokenRequest = URLRequest(url: tokenEndpoint)
-        tokenRequest.httpMethod = "POST"
-        tokenRequest.setValue("Bearer \(appToken)", forHTTPHeaderField: "Authorization")
-        tokenRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        tokenRequest.httpBody = Data("{}".utf8)
-
-        let (data, response) = try await tokenSession.data(for: tokenRequest)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw AIShadowError.invalidResponse
-        }
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            throw AIShadowError.server(httpResponse.statusCode)
+        if connectionInProgress {
+            try await waitUntilSessionReady()
+            return
         }
 
-        let credential = try JSONDecoder().decode(ClientCredential.self, from: data)
-        guard var components = URLComponents(string: "wss://api.openai.com/v1/realtime") else {
-            throw AIShadowError.invalidResponse
-        }
-        components.queryItems = [URLQueryItem(name: "model", value: credential.model)]
-        guard let realtimeURL = components.url else {
-            throw AIShadowError.invalidResponse
+        connectionInProgress = true
+        defer { connectionInProgress = false }
+
+        if webSocket == nil {
+            var tokenRequest = URLRequest(url: tokenEndpoint)
+            tokenRequest.httpMethod = "POST"
+            tokenRequest.setValue("Bearer \(appToken)", forHTTPHeaderField: "Authorization")
+            tokenRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            tokenRequest.httpBody = Data("{}".utf8)
+
+            let (data, response) = try await tokenSession.data(for: tokenRequest)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw AIShadowError.invalidResponse
+            }
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                throw AIShadowError.server(httpResponse.statusCode)
+            }
+
+            let credential = try JSONDecoder().decode(ClientCredential.self, from: data)
+            guard var components = URLComponents(string: "wss://api.openai.com/v1/realtime") else {
+                throw AIShadowError.invalidResponse
+            }
+            components.queryItems = [URLQueryItem(name: "model", value: credential.model)]
+            guard let realtimeURL = components.url else {
+                throw AIShadowError.invalidResponse
+            }
+
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.waitsForConnectivity = false
+            let session = URLSession(configuration: configuration)
+            let socket = session.webSocketTask(
+                with: realtimeURL,
+                protocols: [
+                    "realtime",
+                    "openai-insecure-api-key.\(credential.value)",
+                ]
+            )
+            webSocketSession = session
+            webSocket = socket
+            socket.resume()
+            receiveTask = Task { [weak self] in
+                await self?.receiveLoop()
+            }
         }
 
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.waitsForConnectivity = false
-        let session = URLSession(configuration: configuration)
-        let socket = session.webSocketTask(
-            with: realtimeURL,
-            protocols: [
-                "realtime",
-                "openai-insecure-api-key.\(credential.value)",
-            ]
-        )
-        webSocketSession = session
-        webSocket = socket
-        socket.resume()
-        receiveTask = Task { [weak self] in
-            await self?.receiveLoop()
-        }
+        try await waitUntilSessionReady()
     }
 
     func disconnect() {
@@ -247,11 +261,24 @@ final class AIRealtimeClient {
         webSocket = nil
         webSocketSession?.invalidateAndCancel()
         webSocketSession = nil
+        sessionReady = false
         failPending(with: CancellationError())
     }
 
+    private func waitUntilSessionReady() async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while !sessionReady {
+            guard webSocket != nil || connectionInProgress else {
+                throw AIShadowError.invalidResponse
+            }
+            guard clock.now < deadline else { throw AIRealtimeError.timedOut }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+    }
+
     func compare(_ payload: AIShadowRequest) async throws -> AIShadowCue {
-        if webSocket == nil {
+        if !sessionReady {
             try await connect()
         }
         guard let webSocket else {
@@ -324,12 +351,15 @@ final class AIRealtimeClient {
             self.webSocket = nil
             webSocketSession?.invalidateAndCancel()
             webSocketSession = nil
+            sessionReady = false
         }
     }
 
     private func handleServerEvent(_ data: Data) {
         guard let event = try? JSONDecoder().decode(ServerEvent.self, from: data) else { return }
         switch event.type {
+        case "session.created", "session.updated":
+            sessionReady = true
         case "response.output_text.done":
             guard let text = event.text else {
                 failPending(with: AIShadowError.invalidResponse)

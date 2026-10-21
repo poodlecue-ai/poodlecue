@@ -39,6 +39,7 @@ final class LatencyTestViewModel: ObservableObject {
     @Published private(set) var cueCount = 0
     @Published private(set) var cueSpeechStartMilliseconds: Double?
     @Published private(set) var latestTurnWaitMilliseconds: Double?
+    @Published private(set) var latestAIRequestMilliseconds: Double?
     @Published private(set) var latestEndToEarMilliseconds: Double?
     @Published private(set) var endToEarLatencies: [Double] = []
     @Published private(set) var conversationTurns: [ConversationTurn] = []
@@ -426,6 +427,7 @@ final class LatencyTestViewModel: ObservableObject {
         cueCount = 0
         cueSpeechStartMilliseconds = nil
         latestTurnWaitMilliseconds = nil
+        latestAIRequestMilliseconds = nil
         latestEndToEarMilliseconds = nil
         endToEarLatencies.removeAll()
         conversationTurns = []
@@ -574,6 +576,7 @@ final class LatencyTestViewModel: ObservableObject {
         localShadowBaseline = nil
         cueSpeechStartMilliseconds = nil
         latestTurnWaitMilliseconds = nil
+        latestAIRequestMilliseconds = nil
         latestEndToEarMilliseconds = nil
         pendingCueSpeechFromNanoseconds = nil
 
@@ -617,6 +620,7 @@ final class LatencyTestViewModel: ObservableObject {
         aiComparisonChoice = nil
         aiShadowTask = Task { [weak self] in
             guard let self else { return }
+            let requestStartedAt = DispatchTime.now().uptimeNanoseconds
             do {
                 let result: AIShadowCue
                 if aiRealtimeClient.isConfigured {
@@ -637,6 +641,11 @@ final class LatencyTestViewModel: ObservableObject {
                     result = try await aiShadowClient.compare(payload)
                 }
                 guard !Task.isCancelled else { return }
+                let requestFinishedAt = DispatchTime.now().uptimeNanoseconds
+                let requestElapsed = requestFinishedAt > requestStartedAt
+                    ? requestFinishedAt - requestStartedAt
+                    : 0
+                latestAIRequestMilliseconds = Double(requestElapsed) / 1_000_000
                 recordAIShadowResult(result)
                 aiShadowState = .ready(result)
                 if result.shouldSpeak {

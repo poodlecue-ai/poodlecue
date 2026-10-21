@@ -293,7 +293,10 @@ struct ConversationView: View {
                     }
                     HStack(spacing: 6) {
                         latencyStage("Turn", model.latestTurnWaitMilliseconds)
-                        latencyStage("AI", result.latencyMilliseconds)
+                        latencyStage(
+                            "AI",
+                            model.latestAIRequestMilliseconds ?? result.latencyMilliseconds
+                        )
                         latencyStage("Voice", model.cueSpeechStartMilliseconds)
                         latencyStage("Total", model.latestEndToEarMilliseconds, highlighted: true)
                     }

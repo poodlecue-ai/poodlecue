@@ -16,7 +16,9 @@ final class SpeechActivityDetector {
     private var modeledOnsetLatencyMilliseconds = 0.0
 
     init(
-        speechThresholdDBFS: Double = -38,
+        // Bluetooth and distant iPhone-mic speech can sit near -50 dBFS.
+        // The previous -38 dBFS threshold missed those turns entirely.
+        speechThresholdDBFS: Double = -55,
         releaseDuration: Double = 0.35
     ) {
         self.speechThresholdDBFS = speechThresholdDBFS

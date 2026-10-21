@@ -77,6 +77,7 @@ final class LatencyTestViewModel: ObservableObject {
     private var transcriptPauseTask: Task<Void, Never>?
     private var turnDeadlineArmed = false
     private var currentTurnEndedAtNanoseconds: UInt64?
+    private var lastTranscriptUpdateNanoseconds: UInt64?
     private var pendingCueSpeechFromNanoseconds: UInt64?
 
     private static let speechReleaseEstimateNanoseconds: UInt64 = 350_000_000
@@ -109,7 +110,7 @@ final class LatencyTestViewModel: ObservableObject {
                     : detectedAt
 
                 // Give on-device recognition a short window for the final words.
-                // A later transcript update restarts this countdown.
+                // Later transcript corrections cannot extend this deadline.
                 scheduleTranscriptPauseFallback(for: transcript, fixedDeadline: true)
             }
         }
@@ -383,6 +384,7 @@ final class LatencyTestViewModel: ObservableObject {
         pendingSpeechOnsetNanoseconds = nil
         turnDeadlineArmed = false
         currentTurnEndedAtNanoseconds = nil
+        lastTranscriptUpdateNanoseconds = nil
         pendingCueSpeechFromNanoseconds = nil
         needsCueForCurrentUtterance = false
         cueEngine.beginTurn(at: transcript)
@@ -415,6 +417,7 @@ final class LatencyTestViewModel: ObservableObject {
         pendingSpeechOnsetNanoseconds = nil
         turnDeadlineArmed = false
         currentTurnEndedAtNanoseconds = nil
+        lastTranscriptUpdateNanoseconds = nil
         pendingCueSpeechFromNanoseconds = nil
         needsCueForCurrentUtterance = false
         latestCue = nil
@@ -481,12 +484,16 @@ final class LatencyTestViewModel: ObservableObject {
         pendingSpeechOnsetNanoseconds = nil
         turnDeadlineArmed = false
         currentTurnEndedAtNanoseconds = nil
+        lastTranscriptUpdateNanoseconds = nil
         pendingCueSpeechFromNanoseconds = nil
         needsCueForCurrentUtterance = false
         isSessionActive = false
     }
 
     private func receiveTranscript(_ text: String, isFinal: Bool) {
+        if text != transcript {
+            lastTranscriptUpdateNanoseconds = DispatchTime.now().uptimeNanoseconds
+        }
         transcript = text
         isTranscriptFinal = isFinal
 
@@ -499,9 +506,6 @@ final class LatencyTestViewModel: ObservableObject {
 
         let currentTurnText = transcriptDelta(since: roleStartTranscript)
         if !currentTurnText.isEmpty {
-            if !isSpeechActive, currentTurnEndedAtNanoseconds == nil {
-                currentTurnEndedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
-            }
             if listeningToOtherPerson {
                 // The speech recognizer can successfully hear a distant voice
                 // even when the fixed audio-level threshold misses its onset.
@@ -565,7 +569,9 @@ final class LatencyTestViewModel: ObservableObject {
         roleStartTranscript = transcript
         let priorCueTexts = recentCueTexts
         let turnEndedAtNanoseconds = currentTurnEndedAtNanoseconds
+            ?? lastTranscriptUpdateNanoseconds
         currentTurnEndedAtNanoseconds = nil
+        lastTranscriptUpdateNanoseconds = nil
 
         requestAIShadowCue(
             themText: themText,
